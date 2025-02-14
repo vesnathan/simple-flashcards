@@ -91,65 +91,64 @@ export function DeckView() {
       className="min-h-screen bg-neutral-50 p-8"
       style={{ marginLeft: "240px" }}
     >
-      <div className="max-w-4xl mx-auto">
+      <div className="max-w-4xl mx-auto mt-8">
         {currentlySelectedDeck?.isLocal && <LocalDeckWarning />}
         {currentlySelectedDeck?.cards &&
           currentlySelectedDeck.cards.length > 0 &&
           currentlySelectedDeck.cards.map((card: CardType) =>
             currentCard?.id === card.id ? (
-              <Card
-                key={card.question}
-                className="w-full min-h-[400px] shadow-lg hover:shadow-xl transition-shadow duration-200"
-              >
-                <CardBody className="flex justify-center h-full items-center p-8">
-                  <div className="text-2xl text-neutral-800 text-center">
-                    {showAnswer ? card.answer : card.question}
-                  </div>
-                </CardBody>
-                <CardFooter className="flex justify-center gap-4 p-6 border-t border-neutral-200">
+              <div key={card.question} className="space-y-6">
+                <Card className="w-full min-h-[400px] shadow-lg hover:shadow-xl transition-shadow duration-200">
+                  <CardBody className="flex justify-center h-full items-center p-8">
+                    <div className="text-2xl text-neutral-800 text-center">
+                      {showAnswer ? card.answer : card.question}
+                    </div>
+                  </CardBody>
+                  <CardFooter className="flex justify-center gap-4 p-6 border-t border-neutral-200">
+                    <Button
+                      className="hover:bg-neutral-100"
+                      disabled={isFirstCard}
+                      variant="bordered"
+                      onPress={prevCard}
+                    >
+                      Previous
+                    </Button>
+                    <Button
+                      className="bg-primary-600 hover:bg-primary-700 text-white min-w-32"
+                      onPress={() => setShowAnswer(!showAnswer)}
+                    >
+                      {showAnswer ? "Show Question" : "Show Answer"}
+                    </Button>
+                    <Button
+                      className="hover:bg-neutral-100"
+                      disabled={isLastCard}
+                      variant="bordered"
+                      onPress={nextCard}
+                    >
+                      Next
+                    </Button>
+                  </CardFooter>
+                </Card>
+
+                {/* Card management buttons */}
+                <div className="flex justify-center gap-4 mt-12">
                   <Button
-                    className="hover:bg-neutral-100"
-                    disabled={isFirstCard}
-                    variant="bordered"
-                    onPress={prevCard}
+                    className="bg-primary-600 hover:bg-primary-700 text-white"
+                    onPress={() => setShowAddCardModal(true)}
                   >
-                    Previous
+                    Add Card
                   </Button>
                   <Button
-                    className="bg-primary-600 hover:bg-primary-700 text-white min-w-32"
-                    onPress={() => setShowAnswer(!showAnswer)}
+                    className="bg-red-500 hover:bg-red-600 text-white"
+                    disabled={!currentCard}
+                    onPress={() => setShowDeleteModal(true)}
                   >
-                    {showAnswer ? "Show Question" : "Show Answer"}
+                    Delete Card
                   </Button>
-                  <Button
-                    className="hover:bg-neutral-100"
-                    disabled={isLastCard}
-                    variant="bordered"
-                    onPress={nextCard}
-                  >
-                    Next
-                  </Button>
-                </CardFooter>
-              </Card>
+                </div>
+              </div>
             ) : null,
           )}
-
-        {/* Card management buttons */}
-        <div className="fixed bottom-8 right-8 flex gap-4">
-          <Button
-            className="bg-primary-600 hover:bg-primary-700 text-white shadow-lg"
-            onPress={() => setShowAddCardModal(true)}
-          >
-            Add Card
-          </Button>
-          <Button
-            className="bg-red-500 hover:bg-red-600 text-white shadow-lg"
-            disabled={!currentCard}
-            onPress={() => setShowDeleteModal(true)}
-          >
-            Delete Card
-          </Button>
-        </div>
 
         {/* Add Card Modal */}
         <Modal

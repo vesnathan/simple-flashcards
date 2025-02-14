@@ -18,7 +18,7 @@ export function LocalDeckWarning() {
         <div className="ml-3">
           <p className="text-sm text-yellow-700">
             This deck is stored locally in your browser. Sign in to save it
-            permanently and make it public.
+            permanently.
           </p>
         </div>
       </div>

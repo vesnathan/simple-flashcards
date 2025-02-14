@@ -24,22 +24,22 @@
   "@heroui/theme": "2.4.5",
   "@react-aria/ssr": "3.9.7",
   "@react-aria/visually-hidden": "3.8.18",
+  "autoprefixer": "^10.4.16",
   "aws-sdk": "^2.1692.0",
   "clsx": "2.1.1",
   "framer-motion": "11.13.1",
   "intl-messageformat": "^10.5.0",
   "next": "14.0.4",
   "next-themes": "^0.4.4",
+  "postcss": "^8.4.31",
   "react": "^18.2.0",
   "react-dom": "^18.2.0",
-  "zustand": "^5.0.3",
   "tailwindcss": "^3.4.0",
-  "postcss": "^8.4.31",
-  "autoprefixer": "^10.4.16"
+  "zustand": "^5.0.3"
  },
  "devDependencies": {
+  "autoprefixer": "^10.4.16",
   "postcss": "^8.4.31",
-  "tailwindcss": "^3.4.0",
-  "autoprefixer": "^10.4.16"
+  "tailwindcss": "^3.4.0"
  }
 }

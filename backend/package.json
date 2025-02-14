@@ -13,7 +13,9 @@
     "@types/uuid": "^9.0.7",
     "@aws-sdk/client-iam": "^3.474.0",
     "@aws-sdk/credential-providers": "^3.474.0",
-    "jszip": "^3.10.1"
+    "jszip": "^3.10.1",
+    "@aws-sdk/client-cognito-identity-provider": "^3.744.0",
+    "aws-amplify": "^6.13.0"
   },
   "devDependencies": {
     "@types/node": "^20.10.4",
