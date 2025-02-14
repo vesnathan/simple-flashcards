@@ -64,13 +64,20 @@ export const useDeckStore = create<DeckState>((set) => ({
         cards: updatedCards,
       };
 
-      if (updatedDeck.isLocal) {
+      // Update local storage if it's a local deck
+      if (state.currentlySelectedDeck.isLocal) {
         localStorageService.updateDeck(updatedDeck);
       }
 
+      // Find next card to show
+      const currentIndex = state.currentlySelectedDeck.cards.findIndex(
+        (card) => card.id === cardToDelete.id,
+      );
+      const nextCard = updatedCards[currentIndex] || updatedCards[0] || null;
+
       return {
         currentlySelectedDeck: updatedDeck,
-        currentCard: updatedCards.length > 0 ? updatedCards[0] : null,
+        currentCard: nextCard,
       };
     }),
 

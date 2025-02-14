@@ -11,6 +11,8 @@ import {
   ModalFooter,
 } from "@heroui/modal";
 
+import { LocalDeckWarning } from "./LocalDeckWarning";
+
 import { useDeckStore } from "@/stores/deckStore";
 import { CardType } from "@/types/deck";
 
@@ -27,6 +29,17 @@ export function DeckView() {
   const [newCardQuestion, setNewCardQuestion] = useState("");
   const [newCardAnswer, setNewCardAnswer] = useState("");
   const [successMessage, setSuccessMessage] = useState("");
+  const [showDeleteModal, setShowDeleteModal] = useState(false);
+
+  const currentIndex = currentCard
+    ? currentlySelectedDeck?.cards.findIndex(
+        (card) => card.id === currentCard.id,
+      )
+    : -1;
+
+  const isFirstCard = currentIndex === 0;
+  const isLastCard =
+    currentIndex === (currentlySelectedDeck?.cards.length ?? 0) - 1;
 
   const nextCard = () => {
     setShowAnswer(false);
@@ -66,12 +79,20 @@ export function DeckView() {
     }, 3000);
   };
 
+  const handleDeleteCard = () => {
+    if (currentCard) {
+      deleteCard(currentCard);
+      setShowDeleteModal(false);
+    }
+  };
+
   return (
     <div
       className="min-h-screen bg-neutral-50 p-8"
       style={{ marginLeft: "240px" }}
     >
       <div className="max-w-4xl mx-auto">
+        {currentlySelectedDeck?.isLocal && <LocalDeckWarning />}
         {currentlySelectedDeck?.cards &&
           currentlySelectedDeck.cards.length > 0 &&
           currentlySelectedDeck.cards.map((card: CardType) =>
@@ -88,6 +109,7 @@ export function DeckView() {
                 <CardFooter className="flex justify-center gap-4 p-6 border-t border-neutral-200">
                   <Button
                     className="hover:bg-neutral-100"
+                    disabled={isFirstCard}
                     variant="bordered"
                     onPress={prevCard}
                   >
@@ -101,6 +123,7 @@ export function DeckView() {
                   </Button>
                   <Button
                     className="hover:bg-neutral-100"
+                    disabled={isLastCard}
                     variant="bordered"
                     onPress={nextCard}
                   >
@@ -121,11 +144,8 @@ export function DeckView() {
           </Button>
           <Button
             className="bg-red-500 hover:bg-red-600 text-white shadow-lg"
-            onPress={() => {
-              if (currentlySelectedDeck && currentCard) {
-                deleteCard(currentCard);
-              }
-            }}
+            disabled={!currentCard}
+            onPress={() => setShowDeleteModal(true)}
           >
             Delete Card
           </Button>
@@ -197,6 +217,40 @@ export function DeckView() {
                   onPress={handleAddCard}
                 >
                   Add Card
+                </Button>
+              </div>
+            </ModalFooter>
+          </ModalContent>
+        </Modal>
+
+        {/* Delete Confirmation Modal */}
+        <Modal
+          isOpen={showDeleteModal}
+          onClose={() => setShowDeleteModal(false)}
+        >
+          <ModalContent>
+            <ModalHeader className="border-b border-neutral-200 p-4">
+              <h2 className="text-xl font-semibold">Delete Card</h2>
+            </ModalHeader>
+            <ModalBody className="p-6">
+              <p>
+                Are you sure you want to delete this card? This action cannot be
+                undone.
+              </p>
+            </ModalBody>
+            <ModalFooter className="border-t border-neutral-200 p-4">
+              <div className="flex justify-end gap-3">
+                <Button
+                  variant="bordered"
+                  onPress={() => setShowDeleteModal(false)}
+                >
+                  Cancel
+                </Button>
+                <Button
+                  className="bg-red-500 hover:bg-red-600 text-white"
+                  onPress={handleDeleteCard}
+                >
+                  Delete
                 </Button>
               </div>
             </ModalFooter>
