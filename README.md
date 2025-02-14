@@ -1,41 +1,134 @@
 # Simple Flashcards
 
-Internal flashcard application for creating and managing study materials.
+A serverless flashcard application built with Next.js, DynamoDB, and AWS Lambda.
+
+## Prerequisites
+
+- Node.js 18+
+- AWS CLI configured
+- AWS IAM user with appropriate permissions
+- Yarn package manager
 
 ## Setup
 
+1. Clone the repository
 ```bash
+git clone https://github.com/yourusername/simple-flashcards.git
+cd simple-flashcards
+```
+
+2. Install dependencies
+```bash
+# Install backend dependencies
+cd backend
+yarn install
+
+# Install frontend dependencies
+cd ../frontend
 yarn install
 ```
 
-## Development
+3. Configure AWS credentials
+```bash
+aws configure --profile flashcards-dev
+```
+
+4. Set up environment variables
+```bash
+# Copy example env files
+cp .env.example .env
+```
+
+## Available Commands
+
+### Backend
 
 ```bash
-# Start the development server
+# Build the Lambda functions
+yarn build
+
+# Deploy to dev environment
+yarn deploy:dev
+
+# Deploy to production
+yarn deploy:prod
+
+# Seed the database
+yarn seed
+
+# Clean up dev environment
+yarn cleanup:dev
+
+# Clean up production environment
+yarn cleanup:prod
+```
+
+### Frontend
+
+```bash
+# Start development server
 yarn dev
 
-# Deploy backend
-cd backend
-yarn deploy
+# Build for production
+yarn build
+
+# Start production server
+yarn start
 ```
 
-## Environment Variables
+## Project Structure
 
-Copy `.env.example` to `.env` and fill in the required values:
+```
+simple-flashcards/
+├── backend/
+│   ├── src/
+│   │   ├── handlers/     # Lambda function handlers
+│   │   ├── services/     # Shared services
+│   │   └── scripts/      # Deployment and utility scripts
+│   └── package.json
+└── frontend/
+    ├── src/
+    │   ├── pages/        # Next.js pages
+    │   ├── services/     # API services
+    │   └── types/        # TypeScript types
+    └── package.json
+```
+
+## API Endpoints
+
+- `GET /decks` - List all flashcard decks
+- `GET /decks/:id` - Get a specific deck
+- More endpoints coming soon...
+
+## AWS Resources
+
+The application creates and manages the following AWS resources:
+
+- DynamoDB table for storing decks
+- Lambda functions for API handlers
+- API Gateway for REST endpoints
+- IAM roles and policies
+
+## Development Workflow
+
+1. Make changes to the code
+2. Build the Lambda functions: `yarn build`
+3. Deploy to dev: `yarn deploy:dev`
+4. Test the changes
+5. When ready, deploy to prod: `yarn deploy:prod`
+
+## Cleanup
+
+To remove all AWS resources:
 
 ```bash
-# AWS Configuration
-AWS_REGION=ap-southeast-2            # Your AWS region
-AWS_ACCESS_KEY_ID=your-access-key    # Your AWS access key
-AWS_SECRET_ACCESS_KEY=your-secret-key # Your AWS secret key
+# Development environment
+yarn cleanup:dev
 
-# API Configuration
-NEXT_PUBLIC_API_URL=https://your-api-id.execute-api.ap-southeast-2.amazonaws.com/dev
-
-# Stage
-STAGE=dev                            # Environment stage (dev, prod, etc.)
+# Production environment
+yarn cleanup:prod
 ```
 
-## Private Repository
+## License
 
-This is a private repository. Do not share or distribute the code without permission.
+MIT
