@@ -1,38 +1,17 @@
 {
- "name": "next-app-template",
+ "name": "simple-flashcards",
  "version": "0.0.1",
  "private": true,
  "scripts": {
-  "dev": "next dev --turbopack",
+  "dev": "cd frontend && next dev --turbopack",
   "build": "next build",
   "start": "next start",
-  "lint": "eslint . --ext .ts,.tsx -c .eslintrc.json --fix"
+  "lint": "eslint . --ext .ts,.tsx -c .eslintrc.json --fix",
+  "install-all": "yarn && cd frontend && yarn && cd .. && cd backend && yarn",
+  "clean": "rm -rf node_modules && rm -rf frontend/node_modules && rm -rf backend/node_modules && rm -rf **/dist && rm -rf **/.next && rm -rf yarn.lock && rm -rf **/yarn.lock && rm -rf **/.turbo && find . -name '.git' -prune -o -name '*.tsbuildinfo' -exec rm -rf {} +"
  },
  "dependencies": {
-  "@heroui/button": "2.2.9",
-  "@heroui/card": "^2.2.10",
-  "@heroui/code": "2.2.6",
-  "@heroui/input": "2.4.9",
-  "@heroui/kbd": "2.2.6",
-  "@heroui/link": "2.2.7",
-  "@heroui/listbox": "2.3.9",
-  "@heroui/modal": "^2.2.8",
-  "@heroui/navbar": "2.2.8",
-  "@heroui/snippet": "2.2.10",
-  "@heroui/switch": "2.2.8",
-  "@heroui/system": "2.4.6",
-  "@heroui/theme": "2.4.5",
-  "@react-aria/ssr": "3.9.7",
-  "@react-aria/visually-hidden": "3.8.18",
-  "aws-sdk": "^2.1692.0",
-  "clsx": "2.1.1",
-  "framer-motion": "11.13.1",
-  "intl-messageformat": "^10.5.0",
-  "next": "15.0.4",
-  "next-themes": "^0.4.4",
-  "react": "18.3.1",
-  "react-dom": "18.3.1",
-  "zustand": "^5.0.3"
+  "aws-sdk": "^2.1692.0"
  },
  "devDependencies": {
   "@next/eslint-plugin-next": "15.0.4",
