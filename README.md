@@ -28,9 +28,92 @@ cd ../frontend
 yarn install
 ```
 
-3. Configure AWS credentials
+3. Set up AWS IAM and Credentials
 ```bash
-aws configure --profile flashcards-dev
+# Create IAM user (in AWS Console)
+1. Go to AWS IAM Console
+2. Click "Users" > "Add user"
+3. Set username: flashcards-dev
+4. Select "Access key - Programmatic access"
+5. Click "Next: Permissions"
+6. Click "Create inline policy"
+7. Switch to JSON editor and paste the following policy:
+{
+  "Version": "2012-10-17",
+  "Statement": [
+    {
+      "Effect": "Allow",
+      "Action": [
+        "iam:CreateRole",
+        "iam:GetRole",
+        "iam:PutRolePolicy",
+        "iam:DeleteRole",
+        "iam:DeleteRolePolicy",
+        "iam:PassRole"
+      ],
+      "Resource": "arn:aws:iam::*:role/flashcards-*"
+    },
+    {
+      "Effect": "Allow",
+      "Action": [
+        "lambda:CreateFunction",
+        "lambda:UpdateFunctionCode",
+        "lambda:DeleteFunction",
+        "lambda:ListFunctions",
+        "lambda:AddPermission"
+      ],
+      "Resource": "arn:aws:lambda:*:*:function:flashcards-*"
+    },
+    {
+      "Effect": "Allow",
+      "Action": [
+        "dynamodb:CreateTable",
+        "dynamodb:DeleteTable",
+        "dynamodb:DescribeTable",
+        "dynamodb:ListTables",
+        "dynamodb:GetItem",
+        "dynamodb:PutItem",
+        "dynamodb:Query",
+        "dynamodb:Scan"
+      ],
+      "Resource": "arn:aws:dynamodb:*:*:table/flashcards-*"
+    },
+    {
+      "Effect": "Allow",
+      "Action": [
+        "apigateway:GET",
+        "apigateway:POST",
+        "apigateway:PUT",
+        "apigateway:DELETE"
+      ],
+      "Resource": "arn:aws:apigateway:*::/apis/flashcards-*"
+    }
+  ]
+}
+8. Name the policy "flashcards-dev-policy"
+9. Click "Create policy"
+10. Click "Next: Tags" > "Next: Review" > "Create user"
+11. IMPORTANT: Save the Access key ID and Secret access key
+
+# Configure AWS credentials
+mkdir -p ~/.aws
+touch ~/.aws/credentials ~/.aws/config
+
+# Add to ~/.aws/credentials
+[flashcards-dev]
+aws_access_key_id = YOUR_ACCESS_KEY_ID
+aws_secret_access_key = YOUR_SECRET_ACCESS_KEY
+
+# Add to ~/.aws/config
+[profile flashcards-dev]
+region = ap-southeast-2
+output = json
+
+# Set proper permissions
+chmod 600 ~/.aws/credentials
+
+# Verify configuration
+aws configure list --profile flashcards-dev
 ```
 
 4. Set up environment variables
