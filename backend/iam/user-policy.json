@@ -23,6 +23,42 @@
         "lambda:AddPermission"
       ],
       "Resource": "arn:aws:lambda:ap-southeast-2:430118819356:function:flashcards-*"
+    },
+    {
+      "Effect": "Allow",
+      "Action": [
+        "lambda:ListFunctions"
+      ],
+      "Resource": "*"
+    },
+    {
+      "Effect": "Allow",
+      "Action": [
+        "dynamodb:ListTables"
+      ],
+      "Resource": "arn:aws:dynamodb:ap-southeast-2:430118819356:table/*"
+    },
+    {
+      "Effect": "Allow",
+      "Action": [
+        "dynamodb:CreateTable",
+        "dynamodb:DeleteTable",
+        "dynamodb:DescribeTable",
+        "dynamodb:GetItem",
+        "dynamodb:PutItem",
+        "dynamodb:Query",
+        "dynamodb:Scan"
+      ],
+      "Resource": "arn:aws:dynamodb:ap-southeast-2:430118819356:table/flashcards-*"
+    },
+    {
+      "Effect": "Allow",
+      "Action": [
+        "apigateway:*"
+      ],
+      "Resource": [
+        "arn:aws:apigateway:ap-southeast-2::/*"
+      ]
     }
   ]
 }

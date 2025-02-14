@@ -3,12 +3,24 @@
  "version": "0.0.1",
  "private": true,
  "scripts": {
-  "dev": "cd frontend && next dev --turbopack",
-  "build": "next build",
-  "start": "next start",
+  "dev": "cd frontend && yarn dev",
+  "build": "cd frontend && yarn build",
+  "start": "cd frontend && yarn start",
   "lint": "eslint . --ext .ts,.tsx -c .eslintrc.json --fix",
   "install-all": "yarn && cd frontend && yarn && cd .. && cd backend && yarn",
-  "clean": "rm -rf node_modules && rm -rf frontend/node_modules && rm -rf backend/node_modules && rm -rf **/dist && rm -rf **/.next && rm -rf yarn.lock && rm -rf **/yarn.lock && rm -rf **/.turbo && find . -name '.git' -prune -o -name '*.tsbuildinfo' -exec rm -rf {} +"
+  "clean": "rm -rf node_modules && rm -rf frontend/node_modules && rm -rf backend/node_modules && rm -rf **/dist && rm -rf **/.next && rm -rf yarn.lock && rm -rf **/yarn.lock && rm -rf **/.turbo && find . -name '.git' -prune -o -name '*.tsbuildinfo' -exec rm -rf {} +",
+  "be:build": "cd backend && yarn build",
+  "be:deploy": "cd backend && yarn deploy",
+  "be:deploy:dev": "cd backend && yarn deploy:dev",
+  "be:deploy:prod": "cd backend && yarn deploy:prod",
+  "be:seed": "cd backend && yarn seed",
+  "be:cleanup": "cd backend && yarn cleanup",
+  "be:cleanup:dev": "cd backend && yarn cleanup:dev",
+  "be:cleanup:prod": "cd backend && yarn cleanup:prod",
+  "be:reset": "cd backend && yarn reset",
+  "fe:dev": "cd frontend && yarn dev",
+  "fe:build": "cd frontend && yarn build",
+  "fe:start": "cd frontend && yarn start"
  },
  "dependencies": {
   "aws-sdk": "^2.1692.0"

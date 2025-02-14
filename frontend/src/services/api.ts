@@ -1,29 +1,38 @@
-import { Deck } from '../types/deck';
+/* eslint-disable no-console */
+import { Deck } from "../../../types/deck";
 
-const API_URL = process.env.NEXT_PUBLIC_API_URL;
+import { env } from "@/config/env";
 
 export const deckService = {
   async getDecks(): Promise<Deck[]> {
-    console.log('Fetching decks from:', `${API_URL}/decks`);
-    const response = await fetch(`${API_URL}/decks`);
+    const response = await fetch(env.api.baseUrl);
+
+    console.log("Fetching decks from:", env.api.baseUrl);
+
     if (!response.ok) {
-      console.error('Failed to fetch decks:', response.status, response.statusText);
-      throw new Error('Failed to fetch decks');
+      console.error("API Error:", response.status, response.statusText);
+      throw new Error("Failed to fetch decks");
     }
-    const data = await response.json();
-    console.log('Received decks:', data);
-    return data;
+
+    return response.json();
   },
 
   async getDeck(id: string): Promise<Deck> {
-    console.log('Fetching deck:', id);
-    const response = await fetch(`${API_URL}/decks/${id}`);
+    console.log("Fetching deck:", id);
+    const response = await fetch(`${env.api.baseUrl}/${id}`);
+
     if (!response.ok) {
-      console.error('Failed to fetch deck:', response.status, response.statusText);
-      throw new Error('Failed to fetch deck');
+      console.error(
+        "Failed to fetch deck:",
+        response.status,
+        response.statusText,
+      );
+      throw new Error("Failed to fetch deck");
     }
     const data = await response.json();
-    console.log('Received deck:', data);
+
+    console.log("Received deck:", data);
+
     return data;
-  }
+  },
 };

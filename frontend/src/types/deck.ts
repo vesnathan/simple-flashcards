@@ -7,6 +7,9 @@ export interface CardType {
 export interface Deck {
   title: string;
   cards: CardType[];
+  isPublic?: boolean;
+  userId?: string;
+  createdAt?: string;
 }
 
 export type Decks = Deck[];
