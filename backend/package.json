@@ -1,0 +1,38 @@
+{
+  "name": "flashcards-backend",
+  "version": "1.0.0",
+  "private": true,
+  "dependencies": {
+    "@aws-sdk/client-dynamodb": "^3.474.0",
+    "@aws-sdk/client-lambda": "^3.474.0",
+    "@aws-sdk/client-api-gateway": "^3.474.0",
+    "@aws-sdk/client-cloudfront": "^3.474.0",
+    "@aws-sdk/lib-dynamodb": "^3.474.0",
+    "@types/aws-lambda": "^8.10.130",
+    "uuid": "^9.0.1",
+    "@types/uuid": "^9.0.7",
+    "@aws-sdk/client-cloudformation": "^3.474.0",
+    "@aws-sdk/client-iam": "^3.474.0",
+    "@aws-sdk/credential-providers": "^3.474.0",
+    "jszip": "^3.10.1"
+  },
+  "devDependencies": {
+    "@types/node": "^20.10.4",
+    "typescript": "^5.3.3",
+    "ts-node": "^10.9.1",
+    "esbuild": "^0.19.9"
+  },
+  "scripts": {
+    "build": "yarn clean && ts-node scripts/build.ts",
+    "deploy": "ts-node src/scripts/deploy.ts",
+    "deploy:dev": "yarn deploy --stage=dev",
+    "deploy:prod": "yarn deploy --stage=prod",
+    "start": "ts-node src/local.ts",
+    "seed": "ts-node src/scripts/seed.ts",
+    "clean": "rm -rf dist",
+    "reset": "npm run remove && npm run seed",
+    "cleanup": "ts-node src/scripts/cleanup.ts",
+    "cleanup:dev": "yarn cleanup --stage=dev",
+    "cleanup:prod": "yarn cleanup --stage=prod"
+  }
+}

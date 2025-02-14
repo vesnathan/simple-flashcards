@@ -1,0 +1,28 @@
+{
+  "Version": "2012-10-17",
+  "Statement": [
+    {
+      "Effect": "Allow",
+      "Action": [
+        "iam:CreateRole",
+        "iam:GetRole",
+        "iam:PutRolePolicy",
+        "iam:DeleteRole",
+        "iam:DeleteRolePolicy",
+        "iam:PassRole"
+      ],
+      "Resource": "arn:aws:iam::430118819356:role/flashcards-*"
+    },
+    {
+      "Effect": "Allow",
+      "Action": [
+        "lambda:CreateFunction",
+        "lambda:UpdateFunctionCode",
+        "lambda:DeleteFunction",
+        "lambda:ListFunctions",
+        "lambda:AddPermission"
+      ],
+      "Resource": "arn:aws:lambda:ap-southeast-2:430118819356:function:flashcards-*"
+    }
+  ]
+}
