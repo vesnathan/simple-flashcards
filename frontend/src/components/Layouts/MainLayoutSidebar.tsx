@@ -11,6 +11,8 @@ import {
   ModalFooter,
 } from "@heroui/modal";
 
+import { AuthModal } from "@/components/auth/AuthModal";
+import { useAuthStore } from "@/stores/authStore";
 import { Deck } from "@/types/deck";
 import { useDeckStore } from "@/stores/deckStore";
 
@@ -26,6 +28,8 @@ export function MainLayoutSidebar({ decks }: MainLayoutSidebarProps) {
   );
   const [showAddDeckModal, setShowAddDeckModal] = useState(false);
   const [newDeckTitle, setNewDeckTitle] = useState("");
+  const [showAuthModal, setShowAuthModal] = useState(false);
+  const { user, signOut } = useAuthStore();
 
   const handleDeckSelect = (deck: Deck) => {
     setDeck(deck);
@@ -106,13 +110,29 @@ export function MainLayoutSidebar({ decks }: MainLayoutSidebarProps) {
         ))}
       </div>
 
-      <div className="absolute bottom-0 left-0 right-0 p-4 border-t border-neutral-200 bg-white">
+      <div className="absolute bottom-0 left-0 right-0 p-4 border-t border-neutral-200 bg-white space-y-2">
         <Button
           className="w-full bg-primary-600 hover:bg-primary-700 text-white"
           onPress={() => setShowAddDeckModal(true)}
         >
           Add Deck
         </Button>
+
+        {user ? (
+          <Button
+            className="w-full bg-neutral-200 hover:bg-neutral-300 text-neutral-700"
+            onPress={signOut}
+          >
+            Sign Out
+          </Button>
+        ) : (
+          <Button
+            className="w-full bg-neutral-200 hover:bg-neutral-300 text-neutral-700"
+            onPress={() => setShowAuthModal(true)}
+          >
+            Sign In
+          </Button>
+        )}
       </div>
 
       {/* Add Deck Modal */}
@@ -150,6 +170,11 @@ export function MainLayoutSidebar({ decks }: MainLayoutSidebarProps) {
           </ModalFooter>
         </ModalContent>
       </Modal>
+
+      <AuthModal
+        isOpen={showAuthModal}
+        onClose={() => setShowAuthModal(false)}
+      />
     </div>
   );
 }
