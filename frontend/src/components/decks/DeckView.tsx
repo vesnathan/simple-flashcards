@@ -15,12 +15,18 @@ import { useDeckStore } from "@/stores/deckStore";
 import { CardType } from "@/types/deck";
 
 export function DeckView() {
-  const { currentlySelectedDeck, deleteCard, currentCard, setCurrentCard } =
-    useDeckStore();
+  const {
+    currentlySelectedDeck,
+    deleteCard,
+    currentCard,
+    setCurrentCard,
+    addCard,
+  } = useDeckStore();
   const [showAddCardModal, setShowAddCardModal] = useState(false);
   const [showAnswer, setShowAnswer] = useState(false);
   const [newCardQuestion, setNewCardQuestion] = useState("");
   const [newCardAnswer, setNewCardAnswer] = useState("");
+  const [successMessage, setSuccessMessage] = useState("");
 
   const nextCard = () => {
     setShowAnswer(false);
@@ -44,6 +50,20 @@ export function DeckView() {
 
       setCurrentCard(prevCard || currentCard);
     }
+  };
+
+  const handleAddCard = () => {
+    if (!newCardQuestion.trim() || !newCardAnswer.trim()) return;
+
+    addCard(newCardQuestion, newCardAnswer);
+    setNewCardQuestion("");
+    setNewCardAnswer("");
+    setSuccessMessage("Card added successfully!");
+
+    // Clear success message after 3 seconds
+    setTimeout(() => {
+      setSuccessMessage("");
+    }, 3000);
   };
 
   return (
@@ -122,6 +142,15 @@ export function DeckView() {
               <h2 className="text-xl font-semibold">Add New Card</h2>
             </ModalHeader>
             <ModalBody className="p-6 space-y-4">
+              {successMessage && (
+                <div className="bg-green-50 border-l-4 border-green-400 p-4 mb-4">
+                  <div className="flex">
+                    <div className="ml-3">
+                      <p className="text-sm text-green-700">{successMessage}</p>
+                    </div>
+                  </div>
+                </div>
+              )}
               <div className="space-y-2">
                 <label
                   className="text-sm font-medium text-neutral-700"
@@ -165,9 +194,7 @@ export function DeckView() {
                 </Button>
                 <Button
                   className="bg-primary-600 hover:bg-primary-700 text-white"
-                  onPress={() => {
-                    /* Add card logic */
-                  }}
+                  onPress={handleAddCard}
                 >
                   Add Card
                 </Button>

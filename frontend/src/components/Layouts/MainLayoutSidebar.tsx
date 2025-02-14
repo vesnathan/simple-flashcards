@@ -3,6 +3,13 @@
 import { cn } from "@heroui/theme";
 import { Button } from "@heroui/button";
 import { useState } from "react";
+import {
+  Modal,
+  ModalContent,
+  ModalHeader,
+  ModalBody,
+  ModalFooter,
+} from "@heroui/modal";
 
 import { Deck } from "@/types/deck";
 import { useDeckStore } from "@/stores/deckStore";
@@ -12,17 +19,31 @@ interface MainLayoutSidebarProps {
 }
 
 export function MainLayoutSidebar({ decks }: MainLayoutSidebarProps) {
-  const { setDeck, currentlySelectedDeck } = useDeckStore();
+  const { setDeck, currentlySelectedDeck, addDeck, localDecks } =
+    useDeckStore();
   const [activeCategory, setActiveCategory] = useState<"public" | "private">(
     "private",
   );
+  const [showAddDeckModal, setShowAddDeckModal] = useState(false);
+  const [newDeckTitle, setNewDeckTitle] = useState("");
 
   const handleDeckSelect = (deck: Deck) => {
     setDeck(deck);
   };
 
-  const filteredDecks = decks.filter((deck) =>
-    activeCategory === "public" ? deck.isPublic : !deck.isPublic,
+  const handleAddDeck = () => {
+    if (!newDeckTitle.trim()) return;
+    addDeck(newDeckTitle);
+    setNewDeckTitle("");
+    setShowAddDeckModal(false);
+  };
+
+  // Combine remote and local decks
+  const allDecks = [...decks, ...localDecks];
+  const filteredDecks = allDecks.filter((deck) =>
+    activeCategory === "public"
+      ? deck.isPublic
+      : !deck.isPublic || deck.isLocal,
   );
 
   return (
@@ -88,11 +109,47 @@ export function MainLayoutSidebar({ decks }: MainLayoutSidebarProps) {
       <div className="absolute bottom-0 left-0 right-0 p-4 border-t border-neutral-200 bg-white">
         <Button
           className="w-full bg-primary-600 hover:bg-primary-700 text-white"
-          onPress={() => {}}
+          onPress={() => setShowAddDeckModal(true)}
         >
           Add Deck
         </Button>
       </div>
+
+      {/* Add Deck Modal */}
+      <Modal
+        isOpen={showAddDeckModal}
+        onClose={() => setShowAddDeckModal(false)}
+      >
+        <ModalContent>
+          <ModalHeader className="border-b border-neutral-200 p-4">
+            <h2 className="text-xl font-semibold">Create New Deck</h2>
+          </ModalHeader>
+          <ModalBody className="p-6">
+            <input
+              className="w-full p-2 border border-neutral-300 rounded-md"
+              placeholder="Enter deck title"
+              value={newDeckTitle}
+              onChange={(e) => setNewDeckTitle(e.target.value)}
+            />
+          </ModalBody>
+          <ModalFooter className="border-t border-neutral-200 p-4">
+            <div className="flex justify-end gap-3">
+              <Button
+                variant="bordered"
+                onPress={() => setShowAddDeckModal(false)}
+              >
+                Cancel
+              </Button>
+              <Button
+                className="bg-primary-600 hover:bg-primary-700 text-white"
+                onPress={handleAddDeck}
+              >
+                Create Deck
+              </Button>
+            </div>
+          </ModalFooter>
+        </ModalContent>
+      </Modal>
     </div>
   );
 }
