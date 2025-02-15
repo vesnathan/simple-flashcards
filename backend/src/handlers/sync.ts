@@ -146,10 +146,11 @@ export const syncDeck = async (
       // Only add condition for existing decks and when lastModified is provided
       if (existingDeck && deck.lastModified) {
         Object.assign(putParams, {
-          ConditionExpression: "attribute_not_exists(id) OR lastModified <= :lastMod",
+          ConditionExpression:
+            "attribute_not_exists(id) OR lastModified <= :lastMod",
           ExpressionAttributeValues: {
-            ":lastMod": deck.lastModified
-          }
+            ":lastMod": deck.lastModified,
+          },
         });
       }
 
@@ -202,14 +203,14 @@ export const syncDeck = async (
     };
   } catch (error: any) {
     // Handle specific DynamoDB errors
-    if (error.name === 'ConditionalCheckFailedException') {
+    if (error.name === "ConditionalCheckFailedException") {
       return {
         statusCode: 409,
         headers: corsHeaders,
         body: JSON.stringify({
           message: "Deck was modified by another request",
-          requestId
-        })
+          requestId,
+        }),
       };
     }
 

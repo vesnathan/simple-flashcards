@@ -13,9 +13,23 @@ export const syncService = {
         throw new Error("No auth token available");
       }
 
+      // Explicitly construct the deck object to send to DB
+      const dbDeck = {
+        id: deck.id,
+        title: deck.title,
+        cards: deck.cards,
+        userId: deck.userId,
+        isPublic: deck.isPublic,
+        lastModified: deck.lastModified,
+        createdAt: deck.createdAt,
+      };
+
       const apiUrl = process.env.NEXT_PUBLIC_API_URL;
 
-      console.log("API URL:", apiUrl);
+      console.log("Syncing deck to DB:", {
+        ...dbDeck,
+        cardCount: deck.cards.length,
+      });
 
       const response = await fetch(apiUrl || "", {
         method: "POST",
@@ -23,7 +37,7 @@ export const syncService = {
           "Content-Type": "application/json",
           Authorization: `Bearer ${token}`,
         },
-        body: JSON.stringify({ deck }),
+        body: JSON.stringify({ deck: dbDeck }),
       });
 
       if (!response.ok) {

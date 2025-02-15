@@ -1,6 +1,8 @@
 /* eslint-disable no-console */
 import { Deck } from "../../../types/deck";
 
+import { authService } from "./auth";
+
 import { env } from "@/config/env";
 
 export const deckService = {
@@ -34,5 +36,21 @@ export const deckService = {
     console.log("Received deck:", data);
 
     return data;
+  },
+
+  async getUserDecks(userId: string): Promise<Deck[]> {
+    const token = await authService.getToken();
+    const response = await fetch(`${env.api.baseUrl}?userId=${userId}`, {
+      headers: {
+        Authorization: `Bearer ${token}`,
+      },
+    });
+
+    if (!response.ok) {
+      console.error("API Error:", response.status, response.statusText);
+      throw new Error("Failed to fetch user decks");
+    }
+
+    return response.json();
   },
 };

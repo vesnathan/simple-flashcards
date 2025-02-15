@@ -53,6 +53,10 @@ export function AuthModal({ isOpen, onClose }: AuthModalProps) {
       if (isLogin) {
         await signIn(email, password);
         onClose();
+        // Reset form
+        setEmail("");
+        setPassword("");
+        setLoading(false);
       } else {
         await signUp(email, password);
       }

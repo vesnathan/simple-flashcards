@@ -2,7 +2,7 @@
 
 import { cn } from "@heroui/theme";
 import { Button } from "@heroui/button";
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import {
   Modal,
   ModalContent,
@@ -23,8 +23,13 @@ interface MainLayoutSidebarProps {
 }
 
 export function MainLayoutSidebar({ decks }: MainLayoutSidebarProps) {
-  const { setDeck, currentlySelectedDeck, localDecks, addLocalDeck } =
-    useDeckStore();
+  const {
+    setDeck,
+    currentlySelectedDeck,
+    localDecks,
+    addLocalDeck,
+    loadUserDecks,
+  } = useDeckStore();
   const [activeCategory, setActiveCategory] = useState<"public" | "private">(
     "private",
   );
@@ -33,10 +38,21 @@ export function MainLayoutSidebar({ decks }: MainLayoutSidebarProps) {
   const [showNewDeckModal, setShowNewDeckModal] = useState(false);
   const [newDeckTitle, setNewDeckTitle] = useState("");
 
+  useEffect(() => {
+    if (user?.userId) {
+      loadUserDecks(user.userId);
+    }
+  }, [user, loadUserDecks]);
+
   const privateDecks =
     activeCategory === "private"
-      ? [...decks.filter((deck) => !deck.isPublic), ...localDecks]
-      : decks.filter((deck) => deck.isPublic);
+      ? [
+          // Include decks where user is the owner
+          ...decks.filter((deck) => deck.userId === user?.userId),
+          // Include local decks
+          ...localDecks,
+        ]
+      : decks.filter((deck) => deck.isPublic || deck.userId === "system");
 
   const handleDeckSelect = (deck: Deck) => {
     setDeck(deck);

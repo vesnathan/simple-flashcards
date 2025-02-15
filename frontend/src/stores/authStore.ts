@@ -1,3 +1,4 @@
+/* eslint-disable no-console */
 import { create } from "zustand";
 
 import { useDeckStore } from "./deckStore";
@@ -37,30 +38,40 @@ export const useAuthStore = create<AuthState>((set) => ({
 
   signIn: async (email, password) => {
     try {
-      // Clear existing state first
       set({ user: null, error: null });
-      const signInResult = await authService.signIn(email, password);
+      await authService.signIn(email, password);
+      const currentUser = await authService.getCurrentUser();
 
-      set({ user: signInResult, error: null });
+      set({ user: currentUser, error: null });
 
-      // Try to sync local decks
       try {
-        const deckStore = useDeckStore.getState();
+        // Use store functions directly instead of getState
+        await useDeckStore.setState((state) => {
+          return { ...state }; // Trigger update to ensure latest state
+        });
 
-        await deckStore.syncLocalDecks();
+        // Access store state and functions directly
+        await useDeckStore.getState().syncLocalDecks();
+        await useDeckStore.getState().loadUserDecks(currentUser.userId);
+
+        // Only show success message if decks exist
+        const decks = useDeckStore.getState().decks;
+
+        if (decks.length > 0) {
+          set((state) => ({
+            ...state,
+            toastMessage: {
+              message: "Successfully loaded your decks",
+              type: "success",
+            },
+          }));
+        }
+      } catch (error) {
+        console.error("Failed to load decks:", error);
         set((state) => ({
           ...state,
           toastMessage: {
-            message: "Successfully synced local decks",
-            type: "success",
-          },
-        }));
-      } catch {
-        set((state) => ({
-          ...state,
-          toastMessage: {
-            message:
-              "Failed to sync some local decks. They will remain in local storage.",
+            message: "Failed to load some decks",
             type: "error",
           },
         }));
@@ -84,6 +95,8 @@ export const useAuthStore = create<AuthState>((set) => ({
   signOut: async () => {
     try {
       await authService.signOut();
+      // Use store function directly
+      useDeckStore.getState().clearUserDecks();
       set({ user: null, error: null });
     } catch (error: any) {
       set({ error: error.message });
