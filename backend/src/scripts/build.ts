@@ -1,52 +1,55 @@
 /* eslint-disable no-console */
+import { mkdir, rm, readdir, readFile, writeFile } from "fs/promises";
 import { join } from "path";
-import { writeFileSync, readFileSync, mkdirSync } from "fs";
 
-import { build } from "esbuild";
+import esbuild from "esbuild";
 import JSZip from "jszip";
 
-async function buildAndZip() {
-  try {
-    // Ensure dist directory exists
-    mkdirSync("dist", { recursive: true });
+async function zipDirectory(sourcePath: string, outPath: string) {
+  const zip = new (JSZip as any)(); // Type assertion to handle constructor
+  const entries = await readdir(sourcePath, { withFileTypes: true });
 
-    // Build with esbuild
-    await build({
-      entryPoints: [
-        "src/handlers/decks.ts",
-        "src/handlers/sync.ts", // Add sync handler
-      ],
-      bundle: true,
-      platform: "node",
-      target: "node18",
-      outdir: "dist",
-      format: "cjs",
-    });
+  for (const entry of entries) {
+    if (entry.isFile()) {
+      const filePath = join(sourcePath, entry.name);
+      const content = await readFile(filePath);
 
-    // Create zip file
-    const zip = new JSZip();
-
-    // Read the built file and add to zip
-    const decksJs = readFileSync(
-      join(__dirname, "../../dist/decks.js"),
-      "utf-8",
-    );
-
-    zip.file("decks.js", decksJs);
-
-    // Generate zip buffer
-    const zipBuffer = await zip.generateAsync({
-      type: "nodebuffer",
-      compression: "DEFLATE",
-    });
-
-    // Write zip file
-    writeFileSync(join(__dirname, "../../dist/functions.zip"), zipBuffer);
-    console.log("Build completed successfully");
-  } catch (error) {
-    console.error("Build failed:", error);
-    process.exit(1);
+      zip.file(entry.name, content);
+    }
   }
+
+  const zipContent = await zip.generateAsync({ type: "nodebuffer" });
+
+  await writeFile(outPath, zipContent);
 }
 
-buildAndZip();
+async function build() {
+  const distPath = join(__dirname, "../../dist");
+  const handlerPath = join(distPath, "handlers");
+
+  await rm(distPath, { recursive: true, force: true });
+  await mkdir(distPath);
+  await mkdir(handlerPath);
+
+  // Bundle handlers
+  await esbuild.build({
+    entryPoints: [
+      join(__dirname, "../handlers/sync.ts"),
+      join(__dirname, "../handlers/decks.ts"),
+    ],
+    bundle: true,
+    minify: true,
+    platform: "node",
+    target: "node18",
+    outdir: handlerPath,
+    format: "cjs",
+  });
+
+  // Create ZIP
+  await zipDirectory(handlerPath, join(distPath, "functions.zip"));
+}
+
+build().catch((error) => {
+  console.error("Build failed:", error);
+  process.exit(1);
+});

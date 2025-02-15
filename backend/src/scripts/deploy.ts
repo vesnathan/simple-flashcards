@@ -51,7 +51,7 @@ interface AuthConfig {
   clientId: string | undefined;
 }
 
-async function deployLambda() {
+async function deployLambda(authConfig: AuthConfig) {
   console.log("Creating IAM role...");
   const roleArn = await iamService.createLambdaRole();
 
@@ -71,8 +71,8 @@ async function deployLambda() {
     STAGE: CONFIG.STAGE,
     ACCOUNT_ID: CONFIG.ACCOUNT_ID,
     APP_REGION: CONFIG.REGION,
-    COGNITO_USER_POOL_ID: process.env.NEXT_PUBLIC_COGNITO_USER_POOL_ID || "",
-    COGNITO_CLIENT_ID: process.env.NEXT_PUBLIC_COGNITO_CLIENT_ID || "",
+    COGNITO_USER_POOL_ID: authConfig.userPoolId,
+    COGNITO_CLIENT_ID: authConfig.clientId,
   } as Record<string, string>;
 
   try {
@@ -81,7 +81,7 @@ async function deployLambda() {
       new CreateFunctionCommand({
         FunctionName: getFunctionName,
         Runtime: "nodejs18.x",
-        Handler: "decks.getDecks",
+        Handler: "handlers/decks.getDecks", // Fix handler path
         Role: roleArn,
         Code: { ZipFile: zipFile },
         Environment: {
@@ -95,7 +95,7 @@ async function deployLambda() {
       new CreateFunctionCommand({
         FunctionName: syncFunctionName,
         Runtime: "nodejs18.x",
-        Handler: "sync.syncDeck",
+        Handler: "handlers/sync.syncDeck", // Fix handler path
         Role: roleArn,
         Code: { ZipFile: zipFile },
         Environment: {
@@ -182,137 +182,123 @@ async function deployAPI(
     }),
   );
 
-  // Create GET method
-  await apiGateway.send(
-    new PutMethodCommand({
-      restApiId: api.id,
-      resourceId: resource.id,
-      httpMethod: "GET",
-      authorizationType: "NONE",
-      apiKeyRequired: false,
-    }),
-  );
+  try {
+    // Add OPTIONS method with mock integration
+    await apiGateway.send(
+      new PutMethodCommand({
+        restApiId: api.id,
+        resourceId: resource.id,
+        httpMethod: "OPTIONS",
+        authorizationType: "NONE",
+        apiKeyRequired: false,
+      }),
+    );
 
-  // Add OPTIONS method for CORS
-  await apiGateway.send(
-    new PutMethodCommand({
-      restApiId: api.id,
-      resourceId: resource.id,
-      httpMethod: "OPTIONS",
-      authorizationType: "NONE",
-      apiKeyRequired: false,
-    }),
-  );
+    // Configure mock integration for OPTIONS
+    await apiGateway.send(
+      new PutIntegrationCommand({
+        restApiId: api.id,
+        resourceId: resource.id,
+        httpMethod: "OPTIONS",
+        type: "MOCK",
+        requestTemplates: {
+          "application/json": '{ "statusCode": 200 }',
+        },
+      }),
+    );
 
-  // Integrate with Lambda
-  await apiGateway.send(
-    new PutIntegrationCommand({
-      restApiId: api.id,
-      resourceId: resource.id,
-      httpMethod: "GET",
-      type: "AWS_PROXY",
-      integrationHttpMethod: "POST",
-      uri: `arn:aws:apigateway:${CONFIG.REGION}:lambda:path/2015-03-31/functions/${functionArn}/invocations`,
-    }),
-  );
+    // Add method response for OPTIONS
+    await apiGateway.send(
+      new PutMethodResponseCommand({
+        restApiId: api.id,
+        resourceId: resource.id,
+        httpMethod: "OPTIONS",
+        statusCode: "200",
+        responseParameters: {
+          "method.response.header.Access-Control-Allow-Origin": true,
+          "method.response.header.Access-Control-Allow-Methods": true,
+          "method.response.header.Access-Control-Allow-Headers": true,
+        },
+      }),
+    );
 
-  // Add Lambda integration for OPTIONS
-  await apiGateway.send(
-    new PutIntegrationCommand({
-      restApiId: api.id,
-      resourceId: resource.id,
-      httpMethod: "OPTIONS",
-      type: "AWS_PROXY",
-      integrationHttpMethod: "POST",
-      uri: `arn:aws:apigateway:${CONFIG.REGION}:lambda:path/2015-03-31/functions/${functionArn}/invocations`,
-    }),
-  );
-
-  // Add POST method with explicit CORS configuration
-  await apiGateway.send(
-    new PutMethodCommand({
-      restApiId: api.id,
-      resourceId: resource.id,
-      httpMethod: "POST",
-      authorizationType: "NONE",
-      apiKeyRequired: false,
-    }),
-  );
-
-  // Add Lambda integration for POST
-  await apiGateway.send(
-    new PutIntegrationCommand({
-      restApiId: api.id,
-      resourceId: resource.id,
-      httpMethod: "POST",
-      type: "AWS_PROXY",
-      integrationHttpMethod: "POST",
-      uri: `arn:aws:apigateway:${CONFIG.REGION}:lambda:path/2015-03-31/functions/${syncFunctionArn}/invocations`,
-    }),
-  );
-
-  // Add method response for POST (single response)
-  await apiGateway.send(
-    new PutMethodResponseCommand({
-      restApiId: api.id,
-      resourceId: resource.id,
-      httpMethod: "POST",
-      statusCode: "200",
-      responseParameters: {
-        "method.response.header.Access-Control-Allow-Origin": true,
-        "method.response.header.Access-Control-Allow-Methods": true,
-        "method.response.header.Access-Control-Allow-Headers": true,
-      },
-    }),
-  );
-
-  // Add integration response for POST only for non-proxy integrations
-  if (false) {
-    // Skip for AWS_PROXY integrations
+    // Add integration response for OPTIONS
     await apiGateway.send(
       new PutIntegrationResponseCommand({
         restApiId: api.id,
         resourceId: resource.id,
-        httpMethod: "POST",
+        httpMethod: "OPTIONS",
         statusCode: "200",
         responseParameters: {
           "method.response.header.Access-Control-Allow-Origin": "'*'",
-          "method.response.header.Access-Control-Allow-Headers":
-            "'Content-Type,Authorization,X-Amz-Date'",
           "method.response.header.Access-Control-Allow-Methods":
-            "'OPTIONS,POST'",
+            "'GET,POST,OPTIONS'",
+          "method.response.header.Access-Control-Allow-Headers":
+            "'Content-Type,X-Amz-Date,Authorization,X-Api-Key,X-Amz-Security-Token'",
         },
       }),
     );
+
+    // Add GET method with proxy integration
+    await apiGateway.send(
+      new PutMethodCommand({
+        restApiId: api.id,
+        resourceId: resource.id,
+        httpMethod: "GET",
+        authorizationType: "NONE",
+        apiKeyRequired: false,
+      }),
+    );
+
+    await apiGateway.send(
+      new PutIntegrationCommand({
+        restApiId: api.id,
+        resourceId: resource.id,
+        httpMethod: "GET",
+        type: "AWS_PROXY",
+        integrationHttpMethod: "POST",
+        uri: `arn:aws:apigateway:${CONFIG.REGION}:lambda:path/2015-03-31/functions/${functionArn}/invocations`,
+      }),
+    );
+
+    // Add POST method with proxy integration
+    await apiGateway.send(
+      new PutMethodCommand({
+        restApiId: api.id,
+        resourceId: resource.id,
+        httpMethod: "POST",
+        authorizationType: "NONE",
+        apiKeyRequired: false,
+      }),
+    );
+
+    await apiGateway.send(
+      new PutIntegrationCommand({
+        restApiId: api.id,
+        resourceId: resource.id,
+        httpMethod: "POST",
+        type: "AWS_PROXY",
+        integrationHttpMethod: "POST",
+        uri: `arn:aws:apigateway:${CONFIG.REGION}:lambda:path/2015-03-31/functions/${syncFunctionArn}/invocations`,
+      }),
+    );
+
+    // Create deployment
+    await apiGateway.send(
+      new CreateDeploymentCommand({
+        restApiId: api.id,
+        stageName: CONFIG.STAGE,
+      }),
+    );
+
+    // Enable logging
+    await enableApiGatewayLogging(api.id);
+
+    return api.id;
+  } catch (error) {
+    console.error("Failed to create API Gateway resources:", error);
+    throw error;
   }
-
-  // Add OPTIONS method response
-  await apiGateway.send(
-    new PutMethodResponseCommand({
-      restApiId: api.id,
-      resourceId: resource.id,
-      httpMethod: "OPTIONS",
-      statusCode: "200",
-      responseParameters: {
-        "method.response.header.Access-Control-Allow-Origin": true,
-        "method.response.header.Access-Control-Allow-Headers": true,
-        "method.response.header.Access-Control-Allow-Methods": true,
-      },
-    }),
-  );
-
-  // Create deployment
-  await apiGateway.send(
-    new CreateDeploymentCommand({
-      restApiId: api.id,
-      stageName: CONFIG.STAGE,
-    }),
-  );
-
-  // Enable logging for the API
-  await enableApiGatewayLogging(api.id);
-
-  return api.id;
 }
 
 async function enableApiGatewayLogging(apiId: string) {
@@ -493,7 +479,7 @@ async function deploy() {
     }
 
     // Deploy Lambda and get ARNs
-    const { getFunctionArn, syncFunctionArn } = await deployLambda();
+    const { getFunctionArn, syncFunctionArn } = await deployLambda(authConfig);
 
     // Deploy API Gateway with both function integrations
     const apiId = await deployAPI(getFunctionArn, syncFunctionArn);
