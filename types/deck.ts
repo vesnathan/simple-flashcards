@@ -12,6 +12,7 @@ export interface Deck {
   isLocal?: boolean;
   userId?: string;
   createdAt?: string;
+  syncStatus?: "syncing" | "synced" | "local";
 }
 
 export type Decks = Deck[];

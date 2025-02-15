@@ -1,5 +1,7 @@
 import { create } from "zustand";
 
+import { useDeckStore } from "./deckStore";
+
 import { authService } from "@/services/auth";
 
 interface AuthState {
@@ -12,6 +14,8 @@ interface AuthState {
   checkAuth: () => Promise<void>;
   pendingConfirmation: string | null;
   setPendingConfirmation: (email: string | null) => void;
+  showToast: (message: string, type: "success" | "error" | "info") => void;
+  toastMessage: { message: string; type: "success" | "error" | "info" } | null;
 }
 
 export const useAuthStore = create<AuthState>((set) => ({
@@ -19,6 +23,7 @@ export const useAuthStore = create<AuthState>((set) => ({
   loading: true,
   error: null,
   pendingConfirmation: null,
+  toastMessage: null,
 
   checkAuth: async () => {
     try {
@@ -32,11 +37,37 @@ export const useAuthStore = create<AuthState>((set) => ({
 
   signIn: async (email, password) => {
     try {
-      const user = await authService.signIn(email, password);
+      // Clear existing state first
+      set({ user: null, error: null });
+      const signInResult = await authService.signIn(email, password);
 
-      set({ user, error: null });
+      set({ user: signInResult, error: null });
+
+      // Try to sync local decks
+      try {
+        const deckStore = useDeckStore.getState();
+
+        await deckStore.syncLocalDecks();
+        set((state) => ({
+          ...state,
+          toastMessage: {
+            message: "Successfully synced local decks",
+            type: "success",
+          },
+        }));
+      } catch {
+        set((state) => ({
+          ...state,
+          toastMessage: {
+            message:
+              "Failed to sync some local decks. They will remain in local storage.",
+            type: "error",
+          },
+        }));
+      }
     } catch (error: any) {
-      set({ error: error.message });
+      set({ error: error.message, user: null });
+      throw error;
     }
   },
 
@@ -51,9 +82,22 @@ export const useAuthStore = create<AuthState>((set) => ({
   },
 
   signOut: async () => {
-    await authService.signOut();
-    set({ user: null });
+    try {
+      await authService.signOut();
+      set({ user: null, error: null });
+    } catch (error: any) {
+      set({ error: error.message });
+      throw error;
+    }
   },
 
   setPendingConfirmation: (email) => set({ pendingConfirmation: email }),
+
+  showToast: (message: string, type: "success" | "error" | "info") => {
+    set({ toastMessage: { message, type } });
+    // Clear toast after 3 seconds
+    setTimeout(() => {
+      set({ toastMessage: null });
+    }, 3000);
+  },
 }));

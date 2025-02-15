@@ -1,20 +1,35 @@
 import { useState } from "react";
 import { Button } from "@heroui/button";
-import { Modal, ModalContent, ModalHeader, ModalBody, ModalFooter } from "@heroui/modal";
+import {
+  Modal,
+  ModalContent,
+  ModalHeader,
+  ModalBody,
+  ModalFooter,
+} from "@heroui/modal";
 
+import { useAuthStore } from "@/stores/authStore";
 import { authService } from "@/services/auth";
 
 interface ConfirmationModalProps {
   isOpen: boolean;
   onClose: () => void;
   email: string;
+  password: string; // Add password prop
   onConfirmed: () => void;
 }
 
-export function ConfirmationModal({ isOpen, onClose, email, onConfirmed }: ConfirmationModalProps) {
+export function ConfirmationModal({
+  isOpen,
+  onClose,
+  email,
+  password,
+  onConfirmed,
+}: ConfirmationModalProps) {
   const [code, setCode] = useState("");
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
+  const { signIn } = useAuthStore();
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -23,6 +38,8 @@ export function ConfirmationModal({ isOpen, onClose, email, onConfirmed }: Confi
 
     try {
       await authService.confirmSignUp(email, code);
+      // Auto login after confirmation using passed password
+      await signIn(email, password);
       onConfirmed();
       onClose();
     } catch (err: any) {
@@ -47,13 +64,13 @@ export function ConfirmationModal({ isOpen, onClose, email, onConfirmed }: Confi
               </div>
             )}
 
-            <div className="space-y-2">
+            <div>
               <p className="text-sm text-neutral-600">
                 We sent a confirmation code to {email}. Please enter it below.
               </p>
               <input
                 required
-                className="w-full px-3 py-2 border border-neutral-300 rounded-md"
+                className="mt-2 w-full px-3 py-2 border border-neutral-300 rounded-md"
                 placeholder="Enter confirmation code"
                 value={code}
                 onChange={(e) => setCode(e.target.value)}
@@ -68,8 +85,8 @@ export function ConfirmationModal({ isOpen, onClose, email, onConfirmed }: Confi
               </Button>
               <Button
                 className="bg-primary-600 hover:bg-primary-700 text-white"
-                type="submit"
                 disabled={loading || !code}
+                type="submit"
               >
                 {loading ? "Confirming..." : "Confirm"}
               </Button>

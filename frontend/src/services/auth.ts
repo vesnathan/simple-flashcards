@@ -8,38 +8,62 @@ import {
   confirmSignUp,
 } from "aws-amplify/auth";
 
+const cognitoErrorMessages: Record<string, string> = {
+  UserNotFoundException: "Incorrect email or password",
+  NotAuthorizedException: "Incorrect email or password",
+  UsernameExistsException: "An account with this email already exists",
+  InvalidPasswordException: "Password does not meet requirements",
+  CodeMismatchException: "Invalid verification code",
+  ExpiredCodeException:
+    "Verification code has expired, please request a new one",
+  LimitExceededException: "Too many attempts, please try again later",
+  UserNotConfirmedException: "Please verify your email address first",
+};
+
+function getErrorMessage(error: any): string {
+  const cognitoError = error?.name || error?.__type;
+
+  return (
+    cognitoErrorMessages[cognitoError] ||
+    error.message ||
+    "An unexpected error occurred"
+  );
+}
+
 Amplify.configure({
   Auth: {
     Cognito: {
-      region: "ap-southeast-2",
       userPoolId: process.env.NEXT_PUBLIC_COGNITO_USER_POOL_ID || "",
       userPoolClientId: process.env.NEXT_PUBLIC_COGNITO_CLIENT_ID || "",
-      oauth: {
-        domain: process.env.NEXT_PUBLIC_COGNITO_DOMAIN || "",
-        scopes: ["email", "openid", "profile"],
-        redirectSignIn:
-          typeof window !== "undefined" ? window.location.origin : "",
-        redirectSignOut:
-          typeof window !== "undefined" ? window.location.origin : "",
-        responseType: "code",
-      },
+      signUpVerificationMethod: "code",
     },
   },
 });
 
 export const authService = {
   async signIn(email: string, password: string) {
-    return signIn({ username: email, password });
+    try {
+      // First sign out any existing user
+      await signOut();
+
+      return await signIn({ username: email, password });
+    } catch (error: any) {
+      throw new Error(getErrorMessage(error));
+    }
   },
 
   async signUp(email: string, password: string) {
-    return signUp({
-      username: email,
-      password,
-      options: {
-        userAttributes: { email },
-      },
-    });
+    try {
+      return await signUp({
+        username: email,
+        password,
+        options: {
+          userAttributes: { email },
+        },
+      });
+    } catch (error: any) {
+      throw new Error(getErrorMessage(error));
+    }
   },
 
   async signOut() {
@@ -57,9 +81,13 @@ export const authService = {
   },
 
   async confirmSignUp(email: string, code: string) {
-    return confirmSignUp({
-      username: email,
-      confirmationCode: code,
-    });
+    try {
+      return await confirmSignUp({
+        username: email,
+        confirmationCode: code,
+      });
+    } catch (error: any) {
+      throw new Error(getErrorMessage(error));
+    }
   },
 };

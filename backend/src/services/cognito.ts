@@ -1,4 +1,7 @@
 /* eslint-disable no-console */
+import { join } from "path";
+import { existsSync, readFileSync } from "fs";
+
 import {
   CognitoIdentityProviderClient,
   CreateUserPoolCommand,
@@ -20,28 +23,38 @@ export const cognitoService = {
     const poolName = `flashcards-${CONFIG.STAGE}-users`;
 
     try {
-      // Check if user pool exists
-      const userPoolId = process.env.NEXT_PUBLIC_COGNITO_USER_POOL_ID;
-      const clientId = process.env.NEXT_PUBLIC_COGNITO_CLIENT_ID;
+      // First try to read from frontend .env
+      const frontendEnvPath = join(__dirname, "../../../frontend/.env");
 
-      if (userPoolId && clientId) {
-        try {
-          await cognito.send(
-            new DescribeUserPoolCommand({
-              UserPoolId: userPoolId,
-            }),
-          );
-          console.log("Using existing Cognito User Pool");
+      if (existsSync(frontendEnvPath)) {
+        const envContent = readFileSync(frontendEnvPath, "utf-8");
+        const userPoolId = envContent.match(
+          /NEXT_PUBLIC_COGNITO_USER_POOL_ID=(.*)/,
+        )?.[1];
+        const clientId = envContent.match(
+          /NEXT_PUBLIC_COGNITO_CLIENT_ID=(.*)/,
+        )?.[1];
 
-          return { userPoolId, clientId };
-        } catch {
-          console.log(
-            "Existing pool not found or not accessible, creating new one",
-          );
+        if (userPoolId && clientId) {
+          try {
+            await cognito.send(
+              new DescribeUserPoolCommand({
+                UserPoolId: userPoolId,
+              }),
+            );
+            console.log("Using existing Cognito User Pool:", userPoolId);
+
+            return { userPoolId, clientId };
+          } catch {
+            console.log(
+              "Failed to validate existing user pool, will create new one",
+            );
+          }
         }
       }
 
-      // Create new User Pool
+      // If no valid existing pool found, create new one
+      console.log("Creating new Cognito User Pool...");
       const userPoolResponse = await cognito.send(
         new CreateUserPoolCommand({
           PoolName: poolName,
@@ -70,6 +83,7 @@ export const cognitoService = {
           ClientName: `flashcards-${CONFIG.STAGE}-client`,
           GenerateSecret: false,
           ExplicitAuthFlows: [
+            "ALLOW_USER_SRP_AUTH",
             "ALLOW_USER_PASSWORD_AUTH",
             "ALLOW_REFRESH_TOKEN_AUTH",
           ],
