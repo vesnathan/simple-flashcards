@@ -20,7 +20,9 @@
         "lambda:UpdateFunctionCode",
         "lambda:DeleteFunction",
         "lambda:ListFunctions",
-        "lambda:AddPermission"
+        "lambda:AddPermission",
+        "lambda:GetPolicy",
+        "lambda:RemovePermission"
       ],
       "Resource": "arn:aws:lambda:ap-southeast-2:430118819356:function:flashcards-*"
     },
@@ -59,6 +61,17 @@
       "Resource": [
         "arn:aws:apigateway:ap-southeast-2::/*"
       ]
+    },
+    {
+      "Effect": "Allow",
+      "Action": [
+        "logs:CreateLogGroup",
+        "logs:CreateLogStream",
+        "logs:PutLogEvents",
+        "logs:DescribeLogGroups",
+        "logs:DescribeLogStreams"
+      ],
+      "Resource": "arn:aws:logs:ap-southeast-2:*:log-group:/aws/lambda/flashcards-*"
     }
   ]
 }

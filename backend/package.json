@@ -3,24 +3,25 @@
   "version": "1.0.0",
   "private": true,
   "dependencies": {
-    "@aws-sdk/client-dynamodb": "^3.474.0",
-    "@aws-sdk/client-lambda": "^3.474.0",
     "@aws-sdk/client-api-gateway": "^3.474.0",
     "@aws-sdk/client-cloudfront": "^3.474.0",
+    "@aws-sdk/client-cognito-identity-provider": "^3.744.0",
+    "@aws-sdk/client-dynamodb": "^3.474.0",
+    "@aws-sdk/client-iam": "^3.474.0",
+    "@aws-sdk/client-lambda": "^3.474.0",
+    "@aws-sdk/credential-providers": "^3.474.0",
     "@aws-sdk/lib-dynamodb": "^3.474.0",
     "@types/aws-lambda": "^8.10.130",
-    "uuid": "^9.0.1",
     "@types/uuid": "^9.0.7",
-    "@aws-sdk/client-iam": "^3.474.0",
-    "@aws-sdk/credential-providers": "^3.474.0",
+    "dotenv": "^16.4.7",
     "jszip": "^3.10.1",
-    "@aws-sdk/client-cognito-identity-provider": "^3.744.0"
+    "uuid": "^9.0.1"
   },
   "devDependencies": {
     "@types/node": "^20.10.4",
-    "typescript": "^5.3.3",
+    "esbuild": "^0.19.9",
     "ts-node": "^10.9.1",
-    "esbuild": "^0.19.9"
+    "typescript": "^5.3.3"
   },
   "scripts": {
     "build": "yarn clean && ts-node src/scripts/build.ts",

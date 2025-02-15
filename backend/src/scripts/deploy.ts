@@ -1,5 +1,5 @@
 /* eslint-disable no-console */
-import { readFileSync } from "fs";
+import { readFileSync, writeFileSync } from "fs";
 import { join } from "path";
 import { execSync } from "child_process";
 
@@ -17,6 +17,7 @@ import {
   PutIntegrationCommand,
   CreateDeploymentCommand,
   GetResourcesCommand,
+  GetRestApisCommand,
 } from "@aws-sdk/client-api-gateway";
 
 import { dynamodbService } from "../services/dynamodb";
@@ -43,6 +44,10 @@ async function deployLambda() {
   const zipFile = readFileSync(join(__dirname, "../../dist/functions.zip"));
 
   try {
+    if (!CONFIG.ACCOUNT_ID) {
+      throw new Error("AWS_ACCOUNT_ID is required");
+    }
+
     await lambda.send(
       new CreateFunctionCommand({
         FunctionName: functionName,
@@ -53,7 +58,17 @@ async function deployLambda() {
         Environment: {
           Variables: {
             DECKS_TABLE: CONFIG.DECKS_TABLE,
-          },
+            STAGE: CONFIG.STAGE,
+            ACCOUNT_ID: CONFIG.ACCOUNT_ID,
+            APP_REGION: CONFIG.REGION,
+          } as Record<string, string>, // Type assertion to satisfy TypeScript
+        },
+        // Add CloudWatch configuration
+        LoggingConfig: {
+          LogFormat: "JSON",
+          LogGroup: `/aws/lambda/${functionName}`,
+          ApplicationLogLevel: "INFO",
+          SystemLogLevel: "INFO",
         },
       }),
     );
@@ -78,16 +93,36 @@ async function deployLambda() {
   }
 }
 
-async function deployAPI(functionArn: string) {
-  console.log("Deploying API Gateway...");
+async function findExistingApi(): Promise<string | undefined> {
+  const apis = await apiGateway.send(new GetRestApisCommand({}));
+  const existingApi = apis.items?.find(
+    (api) => api.name === `flashcards-${CONFIG.STAGE}-api`,
+  );
 
-  // Create API
+  return existingApi?.id;
+}
+
+async function deployAPI(functionArn: string): Promise<string> {
+  console.log("Checking for existing API...");
+  const existingApiId = await findExistingApi();
+
+  if (existingApiId) {
+    console.log("Found existing API, reusing API ID:", existingApiId);
+
+    return existingApiId;
+  }
+
+  console.log("Creating new API Gateway...");
   const api = await apiGateway.send(
     new CreateRestApiCommand({
       name: `flashcards-${CONFIG.STAGE}-api`,
       description: "Flashcards API",
     }),
   );
+
+  if (!api.id) {
+    throw new Error("Failed to create API Gateway - no API ID returned");
+  }
 
   // Get root resource id
   const resources = await apiGateway.send(
@@ -117,12 +152,35 @@ async function deployAPI(functionArn: string) {
     }),
   );
 
+  // Add OPTIONS method for CORS
+  await apiGateway.send(
+    new PutMethodCommand({
+      restApiId: api.id,
+      resourceId: resource.id,
+      httpMethod: "OPTIONS",
+      authorizationType: "NONE",
+      apiKeyRequired: false,
+    }),
+  );
+
   // Integrate with Lambda
   await apiGateway.send(
     new PutIntegrationCommand({
       restApiId: api.id,
       resourceId: resource.id,
       httpMethod: "GET",
+      type: "AWS_PROXY",
+      integrationHttpMethod: "POST",
+      uri: `arn:aws:apigateway:${CONFIG.REGION}:lambda:path/2015-03-31/functions/${functionArn}/invocations`,
+    }),
+  );
+
+  // Add Lambda integration for OPTIONS
+  await apiGateway.send(
+    new PutIntegrationCommand({
+      restApiId: api.id,
+      resourceId: resource.id,
+      httpMethod: "OPTIONS",
       type: "AWS_PROXY",
       integrationHttpMethod: "POST",
       uri: `arn:aws:apigateway:${CONFIG.REGION}:lambda:path/2015-03-31/functions/${functionArn}/invocations`,
@@ -140,13 +198,50 @@ async function deployAPI(functionArn: string) {
   return api.id;
 }
 
+async function writeApiUrl(apiId: string): Promise<string> {
+  const apiUrl = `https://${apiId}.execute-api.${CONFIG.REGION}.amazonaws.com/${CONFIG.STAGE}/decks`;
+
+  // Write to frontend .env
+  const envPath = join(__dirname, "../../../frontend/.env");
+
+  writeFileSync(envPath, `NEXT_PUBLIC_API_URL=${apiUrl}\n`);
+
+  console.log("API URL saved to frontend/.env:", apiUrl);
+
+  return apiUrl;
+}
+
+async function addLambdaPermission(functionName: string) {
+  try {
+    // Try to add permission directly without checking if it exists
+    await lambda.send(
+      new AddPermissionCommand({
+        FunctionName: functionName,
+        StatementId: "apigateway-invoke",
+        Action: "lambda:InvokeFunction",
+        Principal: "apigateway.amazonaws.com",
+        SourceArn: `arn:aws:execute-api:${CONFIG.REGION}:${CONFIG.ACCOUNT_ID}:*/*/*/*`,
+      }),
+    );
+    console.log("Lambda permission added successfully");
+  } catch (error: any) {
+    // If permission already exists, that's fine
+    if (error.name === "ResourceConflictException") {
+      console.log("Lambda permission already exists");
+
+      return;
+    }
+    throw error;
+  }
+}
+
 async function deploy() {
   try {
     console.log("Building Lambda functions...");
     execSync("yarn build", { stdio: "inherit" });
 
     console.log("Creating DynamoDB table...");
-    await dynamodbService.createTable();
+    const tableWasCreated = await dynamodbService.createTable();
 
     // Deploy Lambda and get its ARN
     const functionArn = await deployLambda();
@@ -154,26 +249,27 @@ async function deploy() {
     // Deploy API Gateway with Lambda integration
     const apiId = await deployAPI(functionArn);
 
+    if (!apiId) {
+      throw new Error("Failed to get API ID");
+    }
+
+    const apiUrl = await writeApiUrl(apiId);
+
     // Add Lambda permission for API Gateway
-    await lambda.send(
-      new AddPermissionCommand({
-        FunctionName: `flashcards-${CONFIG.STAGE}-getDecks`,
-        StatementId: "apigateway-invoke",
-        Action: "lambda:InvokeFunction",
-        Principal: "apigateway.amazonaws.com",
-      }),
-    );
+    const functionName = `flashcards-${CONFIG.STAGE}-getDecks`;
+
+    await addLambdaPermission(functionName);
 
     console.log("Deployment successful");
-    console.log(
-      "API URL:",
-      `https://${apiId}.execute-api.${CONFIG.REGION}.amazonaws.com/${CONFIG.STAGE}/decks`,
-    );
+    console.log("API URL:", apiUrl);
 
-    console.log("Deployment successful, seeding database...");
-    await import("./seed");
+    if (tableWasCreated) {
+      console.log("New table created, seeding database...");
+      await import("./seed");
+      console.log("Database seeded successfully");
+    }
 
-    console.log("Deployment and seeding completed successfully");
+    console.log("Deployment completed successfully");
   } catch (error) {
     console.error("Deployment failed:", error);
     process.exit(1);
