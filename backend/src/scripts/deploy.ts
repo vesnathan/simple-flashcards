@@ -80,6 +80,27 @@ async function deployLambda() {
     );
     console.log("Lambda function created successfully");
 
+    // Create/update sync function
+    const syncFunctionName = `flashcards-${CONFIG.STAGE}-syncDeck`;
+
+    await lambda.send(
+      new CreateFunctionCommand({
+        FunctionName: syncFunctionName,
+        Runtime: "nodejs18.x",
+        Handler: "sync.syncDeck",
+        Role: roleArn,
+        Code: { ZipFile: zipFile },
+        Environment: {
+          Variables: {
+            DECKS_TABLE: CONFIG.DECKS_TABLE,
+            STAGE: CONFIG.STAGE,
+            ACCOUNT_ID: CONFIG.ACCOUNT_ID,
+            APP_REGION: CONFIG.REGION,
+          },
+        },
+      }),
+    );
+
     return `arn:aws:lambda:${CONFIG.REGION}:${CONFIG.ACCOUNT_ID}:function:${functionName}`;
   } catch (error: any) {
     if (error.name === "ResourceConflictException") {
@@ -108,7 +129,10 @@ async function findExistingApi(): Promise<string | undefined> {
   return existingApi?.id;
 }
 
-async function deployAPI(functionArn: string): Promise<string> {
+async function deployAPI(
+  functionArn: string,
+  syncFunctionArn: string,
+): Promise<string> {
   console.log("Checking for existing API...");
   const existingApiId = await findExistingApi();
 
@@ -190,6 +214,29 @@ async function deployAPI(functionArn: string): Promise<string> {
       type: "AWS_PROXY",
       integrationHttpMethod: "POST",
       uri: `arn:aws:apigateway:${CONFIG.REGION}:lambda:path/2015-03-31/functions/${functionArn}/invocations`,
+    }),
+  );
+
+  // Add POST method for sync
+  await apiGateway.send(
+    new PutMethodCommand({
+      restApiId: api.id,
+      resourceId: resource.id,
+      httpMethod: "POST",
+      authorizationType: "NONE", // We'll handle auth in Lambda
+      apiKeyRequired: false,
+    }),
+  );
+
+  // Add Lambda integration for POST
+  await apiGateway.send(
+    new PutIntegrationCommand({
+      restApiId: api.id,
+      resourceId: resource.id,
+      httpMethod: "POST",
+      type: "AWS_PROXY",
+      integrationHttpMethod: "POST",
+      uri: `arn:aws:apigateway:${CONFIG.REGION}:lambda:path/2015-03-31/functions/${syncFunctionArn}/invocations`,
     }),
   );
 

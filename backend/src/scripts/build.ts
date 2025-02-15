@@ -12,7 +12,10 @@ async function buildAndZip() {
 
     // Build with esbuild
     await build({
-      entryPoints: ["src/handlers/decks.ts"],
+      entryPoints: [
+        "src/handlers/decks.ts",
+        "src/handlers/sync.ts", // Add sync handler
+      ],
       bundle: true,
       platform: "node",
       target: "node18",

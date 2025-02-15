@@ -21,14 +21,11 @@ export const MainLayout: React.FC<MainLayoutProps> = ({ children, decks }) => {
   } | null>(null);
 
   useEffect(() => {
-    const unsubscribe = useAuthStore.subscribe(
-      (state: any) => state.showToast,
-      (showToast) => {
-        if (showToast) {
-          setToast({ message: showToast.message, type: showToast.type });
-        }
-      },
-    );
+    const unsubscribe = useAuthStore.subscribe((state) => {
+      if (state.toastMessage) {
+        setToast(state.toastMessage);
+      }
+    });
 
     return () => unsubscribe();
   }, []);

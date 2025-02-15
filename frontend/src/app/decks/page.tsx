@@ -1,7 +1,9 @@
+"use client";
+
 import { useEffect, useState } from "react";
 
-import { deckService } from "../../services/api";
-import { Deck } from "../../../../types/deck";
+import { deckService } from "@/services/api";
+import { Deck } from "@/types/deck";
 
 export default function DecksPage() {
   const [decks, setDecks] = useState<Deck[]>([]);

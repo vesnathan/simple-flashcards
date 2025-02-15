@@ -1,9 +1,10 @@
 /* eslint-disable no-console */
 import { create } from "zustand";
 
+import { Deck, CardType } from "../../../types/deck";
+
 import { syncService } from "@/services/sync";
 import { localStorageService } from "@/services/localStorage";
-import { Deck, CardType } from "@/types";
 
 interface DeckStore {
   currentlySelectedDeck: Deck | null;
@@ -16,6 +17,7 @@ interface DeckStore {
   decks: Deck[];
   loadLocalDecks: () => void;
   localDecks: Deck[];
+  addCard: (question: string, answer: string) => void;
 }
 
 export const useDeckStore = create<DeckStore>((set) => ({
@@ -27,19 +29,41 @@ export const useDeckStore = create<DeckStore>((set) => ({
     }),
   currentCard: null,
   setCurrentCard: (card: CardType) => set({ currentCard: card }),
-  addCard: (card: CardType) =>
+  addCard: (question: string, answer: string) => {
     set((state) => {
-      if (state.currentlySelectedDeck) {
+      if (!state.currentlySelectedDeck) return state;
+
+      const newCard: CardType = {
+        id: state.currentlySelectedDeck.cards.length, // Simple ID generation
+        question,
+        answer,
+      };
+
+      const updatedDeck = {
+        ...state.currentlySelectedDeck,
+        cards: [...state.currentlySelectedDeck.cards, newCard],
+      };
+
+      // If it's a local deck, update localDecks
+      if (state.currentlySelectedDeck.isLocal) {
         return {
-          currentlySelectedDeck: {
-            ...state.currentlySelectedDeck,
-            cards: [...state.currentlySelectedDeck.cards, card],
-          },
+          ...state,
+          currentlySelectedDeck: updatedDeck,
+          localDecks: state.localDecks.map((d) =>
+            d.id === updatedDeck.id ? updatedDeck : d,
+          ),
         };
       }
 
-      return state;
-    }),
+      return {
+        ...state,
+        currentlySelectedDeck: updatedDeck,
+        decks: state.decks.map((d) =>
+          d.id === updatedDeck.id ? updatedDeck : d,
+        ),
+      };
+    });
+  },
   deleteCard: (card: CardType) =>
     set((state) => {
       if (state.currentlySelectedDeck) {
@@ -81,32 +105,38 @@ export const useDeckStore = create<DeckStore>((set) => ({
   syncLocalDecks: async () => {
     const localDecks = localStorageService.getDecks();
 
-    for (const deck of localDecks) {
-      try {
-        set((state) => ({
-          decks: state.decks.map((d) =>
-            d.id === deck.id ? { ...d, syncStatus: "syncing" } : d,
-          ),
-        }));
+    if (localDecks.length === 0) {
+      console.log("No local decks to sync");
 
-        await syncService.saveDeckToDb(deck);
-        localStorageService.deleteDeck(deck.id);
+      return;
+    }
 
-        set((state) => ({
-          decks: state.decks.map((d) =>
-            d.id === deck.id
-              ? { ...d, syncStatus: "synced", isLocal: false }
-              : d,
-          ),
-        }));
-      } catch (error) {
-        console.error(`Failed to sync deck ${deck.id}:`, error);
-        set((state) => ({
-          decks: state.decks.map((d) =>
-            d.id === deck.id ? { ...d, syncStatus: "local" } : d,
-          ),
-        }));
-      }
+    console.log("Syncing local decks:", localDecks);
+
+    try {
+      // Mark all local decks as syncing
+      set((state) => ({
+        localDecks: state.localDecks.map((d) => ({
+          ...d,
+          syncStatus: "syncing",
+        })),
+      }));
+
+      await syncService.syncLocalDecks();
+
+      // Remove synced decks from local state
+      set((state) => ({
+        localDecks: state.localDecks.filter((d) => d.syncStatus !== "syncing"),
+      }));
+    } catch (error) {
+      console.error("Sync failed:", error);
+      // Reset sync status on failure
+      set((state) => ({
+        localDecks: state.localDecks.map((d) =>
+          d.syncStatus === "syncing" ? { ...d, syncStatus: "local" } : d,
+        ),
+      }));
+      throw error;
     }
   },
   decks: [],

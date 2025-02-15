@@ -4,9 +4,8 @@ import { cn } from "@heroui/theme";
 import { Button } from "@heroui/button";
 import { useState } from "react";
 
-import { Deck } from "../../../../types";
-import { useDeckStore } from "../../stores/deckStore";
-
+import { Deck } from "@/types/deck"; // Fix import path
+import { useDeckStore } from "@/stores/deckStore"; // Fix import path
 import { useAuthStore } from "@/stores/authStore";
 import { AuthModal } from "@/components/auth/AuthModal";
 

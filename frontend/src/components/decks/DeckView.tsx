@@ -33,7 +33,7 @@ export function DeckView() {
 
   const currentIndex = currentCard
     ? currentlySelectedDeck?.cards.findIndex(
-        (card) => card.id === currentCard.id,
+        (card: CardType) => card.id === currentCard.id,
       )
     : -1;
 
