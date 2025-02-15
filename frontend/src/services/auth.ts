@@ -5,6 +5,7 @@ import {
   signOut,
   getCurrentUser,
   fetchAuthSession,
+  confirmSignUp,
 } from "aws-amplify/auth";
 
 Amplify.configure({
@@ -53,5 +54,12 @@ export const authService = {
     const session = await fetchAuthSession();
 
     return session.tokens?.idToken?.toString();
+  },
+
+  async confirmSignUp(email: string, code: string) {
+    return confirmSignUp({
+      username: email,
+      confirmationCode: code,
+    });
   },
 };

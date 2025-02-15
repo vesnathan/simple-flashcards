@@ -10,12 +10,15 @@ interface AuthState {
   signUp: (email: string, password: string) => Promise<void>;
   signOut: () => Promise<void>;
   checkAuth: () => Promise<void>;
+  pendingConfirmation: string | null;
+  setPendingConfirmation: (email: string | null) => void;
 }
 
 export const useAuthStore = create<AuthState>((set) => ({
   user: null,
   loading: true,
   error: null,
+  pendingConfirmation: null,
 
   checkAuth: async () => {
     try {
@@ -40,7 +43,7 @@ export const useAuthStore = create<AuthState>((set) => ({
   signUp: async (email, password) => {
     try {
       await authService.signUp(email, password);
-      set({ error: null });
+      set({ error: null, pendingConfirmation: email });
     } catch (error: any) {
       set({ error: error.message });
       throw error;
@@ -51,4 +54,6 @@ export const useAuthStore = create<AuthState>((set) => ({
     await authService.signOut();
     set({ user: null });
   },
+
+  setPendingConfirmation: (email) => set({ pendingConfirmation: email }),
 }));
