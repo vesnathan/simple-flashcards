@@ -43,12 +43,23 @@ async function deployLambda() {
   console.log("Creating IAM role...");
   const roleArn = await iamService.createLambdaRole();
 
+  if (!CONFIG.ACCOUNT_ID) {
+    throw new Error("ACCOUNT_ID is required in configuration");
+  }
+
   console.log("Created role:", roleArn);
   const zipFile = readFileSync(join(__dirname, "../../dist/functions.zip"));
 
   // Deploy main function
   const getFunctionName = `flashcards-${CONFIG.STAGE}-getDecks`;
   const syncFunctionName = `flashcards-${CONFIG.STAGE}-syncDeck`;
+
+  const environmentVariables = {
+    DECKS_TABLE: CONFIG.DECKS_TABLE,
+    STAGE: CONFIG.STAGE,
+    ACCOUNT_ID: CONFIG.ACCOUNT_ID,
+    APP_REGION: CONFIG.REGION,
+  };
 
   try {
     // Create/update get function
@@ -60,12 +71,7 @@ async function deployLambda() {
         Role: roleArn,
         Code: { ZipFile: zipFile },
         Environment: {
-          Variables: {
-            DECKS_TABLE: CONFIG.DECKS_TABLE,
-            STAGE: CONFIG.STAGE,
-            ACCOUNT_ID: CONFIG.ACCOUNT_ID,
-            APP_REGION: CONFIG.REGION,
-          },
+          Variables: environmentVariables,
         },
       }),
     );
@@ -79,12 +85,7 @@ async function deployLambda() {
         Role: roleArn,
         Code: { ZipFile: zipFile },
         Environment: {
-          Variables: {
-            DECKS_TABLE: CONFIG.DECKS_TABLE,
-            STAGE: CONFIG.STAGE,
-            ACCOUNT_ID: CONFIG.ACCOUNT_ID,
-            APP_REGION: CONFIG.REGION,
-          },
+          Variables: environmentVariables,
         },
       }),
     );
