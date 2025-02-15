@@ -1,6 +1,8 @@
 import "@/styles/globals.css";
 import { Metadata, Viewport } from "next";
 import clsx from "clsx";
+import { ToastContainer } from "react-toastify";
+import "react-toastify/dist/ReactToastify.css";
 
 import { Providers } from "./providers";
 
@@ -42,6 +44,7 @@ export default function RootLayout({
         <Providers themeProps={{ attribute: "class", defaultTheme: "light" }}>
           <main>{children}</main>
         </Providers>
+        <ToastContainer position="bottom-right" />
       </body>
     </html>
   );

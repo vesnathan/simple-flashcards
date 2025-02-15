@@ -1,11 +1,12 @@
+/* eslint-disable no-console */
 import { Amplify } from "aws-amplify";
 import {
   signIn,
   signUp,
   signOut,
   getCurrentUser,
-  fetchAuthSession,
   confirmSignUp,
+  fetchAuthSession,
 } from "aws-amplify/auth";
 
 const cognitoErrorMessages: Record<string, string> = {
@@ -74,10 +75,16 @@ export const authService = {
     return getCurrentUser();
   },
 
-  async getToken() {
-    const session = await fetchAuthSession();
+  async getToken(): Promise<string | null> {
+    try {
+      const session = await fetchAuthSession();
 
-    return session.tokens?.idToken?.toString();
+      return session.tokens?.accessToken?.toString() || null;
+    } catch (error) {
+      console.error("Failed to get token:", error);
+
+      return null;
+    }
   },
 
   async confirmSignUp(email: string, code: string) {

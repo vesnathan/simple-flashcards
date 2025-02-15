@@ -5,7 +5,7 @@ export interface CardType {
 }
 
 export interface Deck {
-  id: string;
+  id: string; // Make id required again
   title: string;
   cards: CardType[];
   isPublic?: boolean;
@@ -13,6 +13,7 @@ export interface Deck {
   userId?: string;
   createdAt?: string;
   syncStatus?: "syncing" | "synced" | "local";
+  lastModified: number;
 }
 
 export type Decks = Deck[];

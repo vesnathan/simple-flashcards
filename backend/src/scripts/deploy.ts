@@ -8,6 +8,7 @@ import {
   CreateFunctionCommand,
   UpdateFunctionCodeCommand,
   AddPermissionCommand,
+  UpdateFunctionConfigurationCommand,
 } from "@aws-sdk/client-lambda";
 import {
   APIGatewayClient,
@@ -18,7 +19,14 @@ import {
   CreateDeploymentCommand,
   GetResourcesCommand,
   GetRestApisCommand,
+  UpdateStageCommand,
+  PutMethodResponseCommand,
+  PutIntegrationResponseCommand,
 } from "@aws-sdk/client-api-gateway";
+import {
+  CloudWatchLogsClient,
+  CreateLogGroupCommand,
+} from "@aws-sdk/client-cloudwatch-logs";
 
 import { dynamodbService } from "../services/dynamodb";
 import { iamService } from "../services/iam";
@@ -30,6 +38,10 @@ const lambda = new LambdaClient({
   profile: "flashcards-dev",
 });
 const apiGateway = new APIGatewayClient({
+  region: "ap-southeast-2",
+  profile: "flashcards-dev",
+});
+const cloudWatchLogs = new CloudWatchLogsClient({
   region: "ap-southeast-2",
   profile: "flashcards-dev",
 });
@@ -59,7 +71,9 @@ async function deployLambda() {
     STAGE: CONFIG.STAGE,
     ACCOUNT_ID: CONFIG.ACCOUNT_ID,
     APP_REGION: CONFIG.REGION,
-  };
+    COGNITO_USER_POOL_ID: process.env.NEXT_PUBLIC_COGNITO_USER_POOL_ID || "",
+    COGNITO_CLIENT_ID: process.env.NEXT_PUBLIC_COGNITO_CLIENT_ID || "",
+  } as Record<string, string>;
 
   try {
     // Create/update get function
@@ -87,6 +101,8 @@ async function deployLambda() {
         Environment: {
           Variables: environmentVariables,
         },
+        Timeout: 30, // Increase timeout to 30 seconds
+        MemorySize: 256, // Increase memory if needed
       }),
     );
 
@@ -212,13 +228,13 @@ async function deployAPI(
     }),
   );
 
-  // Add POST method for sync
+  // Add POST method with explicit CORS configuration
   await apiGateway.send(
     new PutMethodCommand({
       restApiId: api.id,
       resourceId: resource.id,
       httpMethod: "POST",
-      authorizationType: "NONE", // We'll handle auth in Lambda
+      authorizationType: "NONE",
       apiKeyRequired: false,
     }),
   );
@@ -235,6 +251,56 @@ async function deployAPI(
     }),
   );
 
+  // Add method response for POST (single response)
+  await apiGateway.send(
+    new PutMethodResponseCommand({
+      restApiId: api.id,
+      resourceId: resource.id,
+      httpMethod: "POST",
+      statusCode: "200",
+      responseParameters: {
+        "method.response.header.Access-Control-Allow-Origin": true,
+        "method.response.header.Access-Control-Allow-Methods": true,
+        "method.response.header.Access-Control-Allow-Headers": true,
+      },
+    }),
+  );
+
+  // Add integration response for POST only for non-proxy integrations
+  if (false) {
+    // Skip for AWS_PROXY integrations
+    await apiGateway.send(
+      new PutIntegrationResponseCommand({
+        restApiId: api.id,
+        resourceId: resource.id,
+        httpMethod: "POST",
+        statusCode: "200",
+        responseParameters: {
+          "method.response.header.Access-Control-Allow-Origin": "'*'",
+          "method.response.header.Access-Control-Allow-Headers":
+            "'Content-Type,Authorization,X-Amz-Date'",
+          "method.response.header.Access-Control-Allow-Methods":
+            "'OPTIONS,POST'",
+        },
+      }),
+    );
+  }
+
+  // Add OPTIONS method response
+  await apiGateway.send(
+    new PutMethodResponseCommand({
+      restApiId: api.id,
+      resourceId: resource.id,
+      httpMethod: "OPTIONS",
+      statusCode: "200",
+      responseParameters: {
+        "method.response.header.Access-Control-Allow-Origin": true,
+        "method.response.header.Access-Control-Allow-Headers": true,
+        "method.response.header.Access-Control-Allow-Methods": true,
+      },
+    }),
+  );
+
   // Create deployment
   await apiGateway.send(
     new CreateDeploymentCommand({
@@ -243,26 +309,93 @@ async function deployAPI(
     }),
   );
 
+  // Enable logging for the API
+  await enableApiGatewayLogging(api.id);
+
   return api.id;
 }
 
-async function addLambdaPermission(functionName: string) {
+async function enableApiGatewayLogging(apiId: string) {
+  console.log("Enabling API Gateway logging...");
+
+  const logGroupName = `/aws/apigateway/flashcards-${CONFIG.STAGE}`;
+
   try {
-    // Try to add permission directly without checking if it exists
+    await cloudWatchLogs.send(
+      new CreateLogGroupCommand({
+        logGroupName,
+      }),
+    );
+    console.log("Created CloudWatch log group:", logGroupName);
+  } catch (error: any) {
+    console.log("Log group creation result:", error.name);
+  }
+
+  try {
+    // Update stage settings to enable logging
+    await apiGateway.send(
+      new UpdateStageCommand({
+        restApiId: apiId,
+        stageName: CONFIG.STAGE,
+        patchOperations: [
+          {
+            op: "replace",
+            path: "/*/*/logging/dataTrace",
+            value: "true",
+          },
+          {
+            op: "replace",
+            path: "/*/*/logging/loglevel",
+            value: "INFO",
+          },
+          {
+            op: "replace",
+            path: "/accessLogSettings/destinationArn",
+            value: `arn:aws:logs:${CONFIG.REGION}:${CONFIG.ACCOUNT_ID}:log-group:${logGroupName}`,
+          },
+          {
+            op: "replace",
+            path: "/accessLogSettings/format",
+            value: JSON.stringify({
+              requestId: "$context.requestId",
+              ip: "$context.identity.sourceIp",
+              caller: "$context.identity.caller",
+              user: "$context.identity.user",
+              requestTime: "$context.requestTime",
+              httpMethod: "$context.httpMethod",
+              resourcePath: "$context.resourcePath",
+              status: "$context.status",
+              protocol: "$context.protocol",
+              responseLength: "$context.responseLength",
+              error: "$context.error.message",
+            }),
+          },
+        ],
+      }),
+    );
+
+    console.log("API Gateway logging settings updated");
+  } catch (error: any) {
+    console.error("Failed to enable API Gateway logging:", error);
+  }
+}
+
+async function addLambdaPermission(functionName: string) {
+  console.log(`Adding Lambda permission for function: ${functionName}`);
+  try {
     await lambda.send(
       new AddPermissionCommand({
         FunctionName: functionName,
-        StatementId: "apigateway-invoke",
+        StatementId: `apigateway-invoke-${Date.now()}`, // Make StatementId unique
         Action: "lambda:InvokeFunction",
         Principal: "apigateway.amazonaws.com",
         SourceArn: `arn:aws:execute-api:${CONFIG.REGION}:${CONFIG.ACCOUNT_ID}:*/*/*/*`,
       }),
     );
-    console.log("Lambda permission added successfully");
+    console.log(`Lambda permission added successfully for ${functionName}`);
   } catch (error: any) {
-    // If permission already exists, that's fine
     if (error.name === "ResourceConflictException") {
-      console.log("Lambda permission already exists");
+      console.log(`Lambda permission already exists for ${functionName}`);
 
       return;
     }
@@ -293,6 +426,56 @@ NEXT_PUBLIC_COGNITO_REGION=${CONFIG.REGION}
   );
 }
 
+async function updateExistingFunctions(
+  zipFile: Buffer,
+  authConfig: AuthConfig,
+) {
+  const getFunctionName = `flashcards-${CONFIG.STAGE}-getDecks`;
+  const syncFunctionName = `flashcards-${CONFIG.STAGE}-syncDeck`;
+
+  const environmentVariables = {
+    DECKS_TABLE: CONFIG.DECKS_TABLE,
+    STAGE: CONFIG.STAGE,
+    ACCOUNT_ID: CONFIG.ACCOUNT_ID,
+    APP_REGION: CONFIG.REGION,
+    COGNITO_USER_POOL_ID: authConfig.userPoolId || "",
+    COGNITO_CLIENT_ID: authConfig.clientId || "",
+  } as Record<string, string>;
+
+  // Update both functions
+  for (const functionName of [getFunctionName, syncFunctionName]) {
+    console.log(`Updating function: ${functionName}`);
+
+    try {
+      await lambda.send(
+        new UpdateFunctionCodeCommand({
+          FunctionName: functionName,
+          ZipFile: zipFile,
+        }),
+      );
+
+      // Also update environment variables
+      await lambda.send(
+        new UpdateFunctionConfigurationCommand({
+          FunctionName: functionName,
+          Environment: {
+            Variables: environmentVariables,
+          },
+        }),
+      );
+
+      console.log(`Successfully updated ${functionName}`);
+    } catch (error: any) {
+      if (error.name === "ResourceConflictException") {
+        console.log(`Skipping ${functionName} - update already in progress`);
+        continue;
+      }
+      console.error(`Failed to update ${functionName}:`, error);
+      throw error;
+    }
+  }
+}
+
 async function deploy() {
   try {
     console.log("Building Lambda functions...");
@@ -320,10 +503,17 @@ async function deploy() {
     // Write all config to frontend .env
     await writeEnvFile(apiId, authConfig);
 
-    // Add Lambda permission for API Gateway
-    const functionName = `flashcards-${CONFIG.STAGE}-getDecks`;
+    // Add Lambda permissions for both functions
+    const getFunctionName = `flashcards-${CONFIG.STAGE}-getDecks`;
+    const syncFunctionName = `flashcards-${CONFIG.STAGE}-syncDeck`;
 
-    await addLambdaPermission(functionName);
+    await addLambdaPermission(getFunctionName);
+    await addLambdaPermission(syncFunctionName);
+
+    // Update both Lambda functions with latest code and config
+    const zipFile = readFileSync(join(__dirname, "../../dist/functions.zip"));
+
+    await updateExistingFunctions(zipFile, authConfig);
 
     console.log("Deployment successful");
     console.log(

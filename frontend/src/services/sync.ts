@@ -13,28 +13,38 @@ export const syncService = {
         throw new Error("No auth token available");
       }
 
-      const response = await fetch(process.env.NEXT_PUBLIC_API_URL || "", {
+      const apiUrl = process.env.NEXT_PUBLIC_API_URL;
+
+      console.log("API URL:", apiUrl);
+
+      const response = await fetch(apiUrl || "", {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
           Authorization: `Bearer ${token}`,
         },
-        body: JSON.stringify(deck),
+        body: JSON.stringify({ deck }),
       });
 
       if (!response.ok) {
-        const error = await response.text();
+        const errorText = await response.text();
 
-        throw new Error(`API Error: ${error}`);
+        console.error("API Error:", {
+          status: response.status,
+          statusText: response.statusText,
+          error: errorText,
+        });
+        throw new Error(`API Error: ${response.status} - ${errorText}`);
       }
 
       const result = await response.json();
 
-      console.log("Deck synced successfully:", result);
-
-      return result;
+      return result.deck;
     } catch (error) {
-      console.error("Sync error:", error);
+      console.error("Sync error:", {
+        name: error instanceof Error ? error.name : "Unknown",
+        message: error instanceof Error ? error.message : String(error),
+      });
       throw error;
     }
   },

@@ -18,13 +18,17 @@
       "Action": [
         "lambda:CreateFunction",
         "lambda:UpdateFunctionCode",
+        "lambda:UpdateFunctionConfiguration",
+        "lambda:GetFunction",
         "lambda:DeleteFunction",
         "lambda:ListFunctions",
         "lambda:AddPermission",
         "lambda:GetPolicy",
         "lambda:RemovePermission"
       ],
-      "Resource": "arn:aws:lambda:ap-southeast-2:430118819356:function:flashcards-*"
+      "Resource": [
+        "arn:aws:lambda:ap-southeast-2:430118819356:function:flashcards-*"
+      ]
     },
     {
       "Effect": "Allow",
@@ -69,9 +73,23 @@
         "logs:CreateLogStream",
         "logs:PutLogEvents",
         "logs:DescribeLogGroups",
-        "logs:DescribeLogStreams"
+        "logs:DescribeLogStreams",
+        "logs:PutRetentionPolicy",
+        "logs:DeleteLogGroup"
       ],
-      "Resource": "arn:aws:logs:ap-southeast-2:*:log-group:/aws/lambda/flashcards-*"
+      "Resource": [
+        "arn:aws:logs:ap-southeast-2:430118819356:log-group:/aws/lambda/flashcards-*",
+        "arn:aws:logs:ap-southeast-2:430118819356:log-group:/aws/apigateway/*",
+        "arn:aws:logs:ap-southeast-2:430118819356:log-group:/aws/apigateway/flashcards-*",
+        "arn:aws:logs:ap-southeast-2:430118819356:log-group:/aws/apigateway/flashcards-*:*"
+      ]
+    },
+    {
+      "Effect": "Allow",
+      "Action": [
+        "cognito-idp:ListUserPools"
+      ],
+      "Resource": "*"
     },
     {
       "Effect": "Allow",
@@ -82,7 +100,6 @@
         "cognito-idp:DeleteUserPoolClient",
         "cognito-idp:DescribeUserPool",
         "cognito-idp:DescribeUserPoolClient",
-        "cognito-idp:ListUserPools",
         "cognito-idp:ListUserPoolClients",
         "cognito-idp:UpdateUserPool",
         "cognito-idp:UpdateUserPoolClient"

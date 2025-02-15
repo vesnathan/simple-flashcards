@@ -18,6 +18,7 @@ interface DeckStore {
   loadLocalDecks: () => void;
   localDecks: Deck[];
   addCard: (question: string, answer: string) => void;
+  addLocalDeck: (deck: Deck) => void;
 }
 
 export const useDeckStore = create<DeckStore>((set) => ({
@@ -140,11 +141,18 @@ export const useDeckStore = create<DeckStore>((set) => ({
     }
   },
   decks: [],
-  localDecks: [],
+  localDecks: localStorageService.getDecks(),
 
   loadLocalDecks: () => {
     const decks = localStorageService.getDecks();
 
     set({ localDecks: decks });
+  },
+  addLocalDeck: (deck) => {
+    localStorageService.addDeck(deck);
+    set({
+      localDecks: localStorageService.getDecks(),
+      currentlySelectedDeck: deck,
+    });
   },
 }));

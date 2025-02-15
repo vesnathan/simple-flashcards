@@ -4,6 +4,7 @@ import {
   DynamoDBClient,
   CreateTableCommand,
   DescribeTableCommand,
+  DeleteTableCommand,
 } from "@aws-sdk/client-dynamodb";
 
 import { CONFIG } from "../config/aws";
@@ -79,8 +80,14 @@ export const dynamodbService = {
     await client.send(
       new CreateTableCommand({
         TableName: CONFIG.DECKS_TABLE,
-        AttributeDefinitions: [{ AttributeName: "id", AttributeType: "S" }],
-        KeySchema: [{ AttributeName: "id", KeyType: "HASH" }],
+        AttributeDefinitions: [
+          { AttributeName: "id", AttributeType: "S" },
+          { AttributeName: "userId", AttributeType: "S" },
+        ],
+        KeySchema: [
+          { AttributeName: "userId", KeyType: "HASH" },
+          { AttributeName: "id", KeyType: "RANGE" },
+        ],
         ProvisionedThroughput: {
           ReadCapacityUnits: 5,
           WriteCapacityUnits: 5,
@@ -92,5 +99,23 @@ export const dynamodbService = {
     await this.waitForTable();
 
     return true;
+  },
+
+  async deleteTable(): Promise<void> {
+    try {
+      await ddb.send(
+        new DeleteTableCommand({
+          TableName: CONFIG.DECKS_TABLE,
+        }),
+      );
+      console.log(`Table ${CONFIG.DECKS_TABLE} deleted successfully`);
+    } catch (error: any) {
+      if (error.name === "ResourceNotFoundException") {
+        console.log(`Table ${CONFIG.DECKS_TABLE} does not exist`);
+
+        return;
+      }
+      throw error;
+    }
   },
 };

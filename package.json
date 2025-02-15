@@ -13,14 +13,8 @@
   "be:deploy": "cd backend && yarn deploy",
   "be:deploy:dev": "cd backend && yarn deploy:dev",
   "be:deploy:prod": "cd backend && yarn deploy:prod",
-  "be:seed": "cd backend && yarn seed",
-  "be:cleanup": "cd backend && yarn cleanup",
   "be:cleanup:dev": "cd backend && yarn cleanup:dev",
-  "be:cleanup:prod": "cd backend && yarn cleanup:prod",
-  "be:reset": "cd backend && yarn reset",
-  "fe:dev": "cd frontend && yarn dev",
-  "fe:build": "cd frontend && yarn build",
-  "fe:start": "cd frontend && yarn start"
+  "be:cleanup:prod": "cd backend && yarn cleanup:prod"
  },
  "dependencies": {
   "aws-sdk": "^2.1692.0",

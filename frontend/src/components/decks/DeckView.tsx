@@ -10,6 +10,8 @@ import {
   ModalBody,
   ModalFooter,
 } from "@heroui/modal";
+import { toast } from "react-toastify";
+import "react-toastify/dist/ReactToastify.css";
 
 import { LocalDeckWarning } from "./LocalDeckWarning";
 
@@ -28,7 +30,6 @@ export function DeckView() {
   const [showAnswer, setShowAnswer] = useState(false);
   const [newCardQuestion, setNewCardQuestion] = useState("");
   const [newCardAnswer, setNewCardAnswer] = useState("");
-  const [successMessage, setSuccessMessage] = useState("");
   const [showDeleteModal, setShowDeleteModal] = useState(false);
 
   const currentIndex = currentCard
@@ -71,12 +72,16 @@ export function DeckView() {
     addCard(newCardQuestion, newCardAnswer);
     setNewCardQuestion("");
     setNewCardAnswer("");
-    setSuccessMessage("Card added successfully!");
 
-    // Clear success message after 3 seconds
-    setTimeout(() => {
-      setSuccessMessage("");
-    }, 3000);
+    toast.success("Card added successfully!");
+
+    // Set first card if this was the first card added
+    if (
+      currentlySelectedDeck &&
+      (!currentlySelectedDeck.cards || currentlySelectedDeck.cards.length === 0)
+    ) {
+      setCurrentCard(currentlySelectedDeck.cards[0]);
+    }
   };
 
   const handleDeleteCard = () => {
@@ -161,15 +166,6 @@ export function DeckView() {
               <h2 className="text-xl font-semibold">Add New Card</h2>
             </ModalHeader>
             <ModalBody className="p-6 space-y-4">
-              {successMessage && (
-                <div className="bg-green-50 border-l-4 border-green-400 p-4 mb-4">
-                  <div className="flex">
-                    <div className="ml-3">
-                      <p className="text-sm text-green-700">{successMessage}</p>
-                    </div>
-                  </div>
-                </div>
-              )}
               <div className="space-y-2">
                 <label
                   className="text-sm font-medium text-neutral-700"

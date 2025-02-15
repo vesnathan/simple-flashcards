@@ -1,4 +1,4 @@
-import { Deck } from "@/types/deck";
+import { Deck } from "../../../types/deck";
 
 const DECKS_KEY = "flashcards_decks";
 
@@ -31,5 +31,12 @@ export const localStorageService = {
     const newDecks = decks.filter((deck) => deck.id !== deckId);
 
     localStorage.setItem(DECKS_KEY, JSON.stringify(newDecks));
+  },
+
+  addDeck(deck: Deck): void {
+    const decks = this.getDecks();
+
+    decks.push(deck);
+    localStorage.setItem(DECKS_KEY, JSON.stringify(decks));
   },
 };

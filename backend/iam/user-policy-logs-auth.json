@@ -1,0 +1,41 @@
+{
+  "Version": "2012-10-17",
+  "Statement": [
+    {
+      "Effect": "Allow",
+      "Action": [
+        "logs:CreateLogGroup",
+        "logs:CreateLogStream",
+        "logs:PutLogEvents",
+        "logs:DescribeLogGroups",
+        "logs:DescribeLogStreams",
+        "logs:PutRetentionPolicy",
+        "logs:DeleteLogGroup"
+      ],
+      "Resource": [
+        "arn:aws:logs:ap-southeast-2:430118819356:log-group:/aws/lambda/flashcards-*",
+        "arn:aws:logs:ap-southeast-2:430118819356:log-group:/aws/apigateway/*"
+      ]
+    },
+    {
+      "Effect": "Allow",
+      "Action": ["cognito-idp:ListUserPools"],
+      "Resource": "*"
+    },
+    {
+      "Effect": "Allow",
+      "Action": [
+        "cognito-idp:CreateUserPool",
+        "cognito-idp:CreateUserPoolClient",
+        "cognito-idp:DeleteUserPool",
+        "cognito-idp:DeleteUserPoolClient",
+        "cognito-idp:DescribeUserPool",
+        "cognito-idp:DescribeUserPoolClient",
+        "cognito-idp:ListUserPoolClients",
+        "cognito-idp:UpdateUserPool",
+        "cognito-idp:UpdateUserPoolClient"
+      ],
+      "Resource": ["arn:aws:cognito-idp:ap-southeast-2:430118819356:userpool/*"]
+    }
+  ]
+}

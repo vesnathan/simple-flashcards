@@ -7,6 +7,10 @@ import {
   CreateUserPoolCommand,
   CreateUserPoolClientCommand,
   DescribeUserPoolCommand,
+  DeleteUserPoolCommand,
+  DeleteUserPoolClientCommand,
+  ListUserPoolsCommand,
+  ListUserPoolClientsCommand,
 } from "@aws-sdk/client-cognito-identity-provider";
 
 import { CONFIG } from "../config/aws";
@@ -100,6 +104,54 @@ export const cognitoService = {
       };
     } catch (error) {
       console.error("Failed to setup Cognito:", error);
+      throw error;
+    }
+  },
+
+  async cleanup(): Promise<void> {
+    try {
+      // Find user pool
+      const { UserPools } = await cognito.send(
+        new ListUserPoolsCommand({ MaxResults: 60 }),
+      );
+
+      const userPool = UserPools?.find(
+        (pool) => pool.Name === `flashcards-${CONFIG.STAGE}-pool`,
+      );
+
+      if (userPool?.Id) {
+        // Find and delete client
+        const { UserPoolClients } = await cognito.send(
+          new ListUserPoolClientsCommand({
+            UserPoolId: userPool.Id,
+            MaxResults: 60,
+          }),
+        );
+
+        const client = UserPoolClients?.find(
+          (client) => client.ClientName === `flashcards-${CONFIG.STAGE}-client`,
+        );
+
+        if (client?.ClientId) {
+          await cognito.send(
+            new DeleteUserPoolClientCommand({
+              UserPoolId: userPool.Id,
+              ClientId: client.ClientId,
+            }),
+          );
+          console.log("Deleted Cognito User Pool Client");
+        }
+
+        // Delete user pool
+        await cognito.send(
+          new DeleteUserPoolCommand({
+            UserPoolId: userPool.Id,
+          }),
+        );
+        console.log("Deleted Cognito User Pool");
+      }
+    } catch (error) {
+      console.error("Failed to cleanup Cognito resources:", error);
       throw error;
     }
   },
