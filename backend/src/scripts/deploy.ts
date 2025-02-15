@@ -44,19 +44,17 @@ async function deployLambda() {
   const roleArn = await iamService.createLambdaRole();
 
   console.log("Created role:", roleArn);
-
-  console.log("Deploying Lambda functions...");
-  const functionName = `flashcards-${CONFIG.STAGE}-getDecks`;
   const zipFile = readFileSync(join(__dirname, "../../dist/functions.zip"));
 
-  try {
-    if (!CONFIG.ACCOUNT_ID) {
-      throw new Error("AWS_ACCOUNT_ID is required");
-    }
+  // Deploy main function
+  const getFunctionName = `flashcards-${CONFIG.STAGE}-getDecks`;
+  const syncFunctionName = `flashcards-${CONFIG.STAGE}-syncDeck`;
 
+  try {
+    // Create/update get function
     await lambda.send(
       new CreateFunctionCommand({
-        FunctionName: functionName,
+        FunctionName: getFunctionName,
         Runtime: "nodejs18.x",
         Handler: "decks.getDecks",
         Role: roleArn,
@@ -67,22 +65,12 @@ async function deployLambda() {
             STAGE: CONFIG.STAGE,
             ACCOUNT_ID: CONFIG.ACCOUNT_ID,
             APP_REGION: CONFIG.REGION,
-          } as Record<string, string>, // Type assertion to satisfy TypeScript
-        },
-        // Add CloudWatch configuration
-        LoggingConfig: {
-          LogFormat: "JSON",
-          LogGroup: `/aws/lambda/${functionName}`,
-          ApplicationLogLevel: "INFO",
-          SystemLogLevel: "INFO",
+          },
         },
       }),
     );
-    console.log("Lambda function created successfully");
 
     // Create/update sync function
-    const syncFunctionName = `flashcards-${CONFIG.STAGE}-syncDeck`;
-
     await lambda.send(
       new CreateFunctionCommand({
         FunctionName: syncFunctionName,
@@ -101,19 +89,25 @@ async function deployLambda() {
       }),
     );
 
-    return `arn:aws:lambda:${CONFIG.REGION}:${CONFIG.ACCOUNT_ID}:function:${functionName}`;
+    return {
+      getFunctionArn: `arn:aws:lambda:${CONFIG.REGION}:${CONFIG.ACCOUNT_ID}:function:${getFunctionName}`,
+      syncFunctionArn: `arn:aws:lambda:${CONFIG.REGION}:${CONFIG.ACCOUNT_ID}:function:${syncFunctionName}`,
+    };
   } catch (error: any) {
     if (error.name === "ResourceConflictException") {
       console.log("Updating existing Lambda function...");
       await lambda.send(
         new UpdateFunctionCodeCommand({
-          FunctionName: functionName,
+          FunctionName: getFunctionName,
           ZipFile: zipFile,
         }),
       );
       console.log("Lambda function updated successfully");
 
-      return `arn:aws:lambda:${CONFIG.REGION}:${CONFIG.ACCOUNT_ID}:function:${functionName}`;
+      return {
+        getFunctionArn: `arn:aws:lambda:${CONFIG.REGION}:${CONFIG.ACCOUNT_ID}:function:${getFunctionName}`,
+        syncFunctionArn: `arn:aws:lambda:${CONFIG.REGION}:${CONFIG.ACCOUNT_ID}:function:${syncFunctionName}`,
+      };
     } else {
       throw error;
     }
@@ -314,11 +308,11 @@ async function deploy() {
       throw new Error("Failed to setup authentication");
     }
 
-    // Deploy Lambda and get its ARN
-    const functionArn = await deployLambda();
+    // Deploy Lambda and get ARNs
+    const { getFunctionArn, syncFunctionArn } = await deployLambda();
 
-    // Deploy API Gateway with Lambda integration
-    const apiId = await deployAPI(functionArn);
+    // Deploy API Gateway with both function integrations
+    const apiId = await deployAPI(getFunctionArn, syncFunctionArn);
 
     if (!apiId) throw new Error("Failed to get API ID");
 
