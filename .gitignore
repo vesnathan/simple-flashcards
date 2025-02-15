@@ -10,13 +10,13 @@ node_modules/
 /coverage
 
 # next.js
-.next/
 **/.next/
-/next/
-/out/
-frontend/.next/
+**/.next
+.next/
 .next
-*/.next
+frontend/.next/
+frontend/.next
+*/*/.next/
 */*/.next
 
 # production

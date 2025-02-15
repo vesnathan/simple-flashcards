@@ -1,14 +1,28 @@
-import { useState } from "react";
+import { useState, useMemo } from "react";
 import { Button } from "@heroui/button";
 
 import { useAuthStore } from "@/stores/authStore";
+import PasswordHelper from "@/components/PasswordHelper";
+import { validatePassword, isPasswordValid } from "@/utils/passwordValidation";
 
 export function AuthForm() {
   const [isLogin, setIsLogin] = useState(true);
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
+  const [passwordConfirm, setPasswordConfirm] = useState("");
   const [error, setError] = useState("");
   const { signIn, signUp } = useAuthStore();
+  const passwordValidations = useMemo(
+    () => validatePassword(password),
+    [password],
+  );
+  const isValid = useMemo(
+    () =>
+      isPasswordValid(passwordValidations) &&
+      password === passwordConfirm &&
+      email.includes("@"),
+    [passwordValidations, password, passwordConfirm, email],
+  );
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -71,11 +85,33 @@ export function AuthForm() {
                 onChange={(e) => setPassword(e.target.value)}
               />
             </div>
+
+            {!isLogin && (
+              <>
+                <div>
+                  <label className="sr-only" htmlFor="passwordConfirm">
+                    Confirm Password
+                  </label>
+                  <input
+                    required
+                    className="appearance-none rounded-md relative block w-full px-3 py-2 border border-gray-300 placeholder-gray-500 text-gray-900 focus:outline-none focus:ring-primary-500 focus:border-primary-500"
+                    id="passwordConfirm"
+                    name="passwordConfirm"
+                    placeholder="Confirm Password"
+                    type="password"
+                    value={passwordConfirm}
+                    onChange={(e) => setPasswordConfirm(e.target.value)}
+                  />
+                </div>
+                <PasswordHelper validateResult={passwordValidations} />
+              </>
+            )}
           </div>
 
           <div>
             <Button
-              className="w-full bg-primary-600 hover:bg-primary-700 text-white"
+              className="w-full bg-primary-600 hover:bg-primary-700 text-white disabled:opacity-50 disabled:cursor-not-allowed"
+              disabled={!isLogin && !isValid}
               type="submit"
             >
               {isLogin ? "Sign in" : "Register"}

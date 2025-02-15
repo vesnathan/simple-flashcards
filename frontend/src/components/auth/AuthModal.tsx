@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useMemo } from "react";
 import { Button } from "@heroui/button";
 import {
   Modal,
@@ -9,6 +9,8 @@ import {
 } from "@heroui/modal";
 
 import { useAuthStore } from "@/stores/authStore";
+import PasswordHelper from "@/components/PasswordHelper";
+import { validatePassword, isPasswordValid } from "@/utils/passwordValidation";
 
 interface AuthModalProps {
   isOpen: boolean;
@@ -19,8 +21,22 @@ export function AuthModal({ isOpen, onClose }: AuthModalProps) {
   const [isLogin, setIsLogin] = useState(true);
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
+  const [passwordConfirm, setPasswordConfirm] = useState("");
   const [error, setError] = useState("");
   const { signIn, signUp } = useAuthStore();
+
+  const passwordValidations = useMemo(
+    () => validatePassword(password),
+    [password],
+  );
+  const isValid = useMemo(
+    () =>
+      isLogin ||
+      (isPasswordValid(passwordValidations) &&
+        password === passwordConfirm &&
+        email.includes("@")),
+    [isLogin, passwordValidations, password, passwordConfirm, email],
+  );
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -92,6 +108,29 @@ export function AuthModal({ isOpen, onClose }: AuthModalProps) {
                   onChange={(e) => setPassword(e.target.value)}
                 />
               </div>
+
+              {!isLogin && (
+                <>
+                  <div>
+                    <label
+                      className="block text-sm font-medium text-neutral-700"
+                      htmlFor="passwordConfirm"
+                    >
+                      Confirm Password
+                    </label>
+                    <input
+                      required
+                      className="mt-1 w-full px-3 py-2 border border-neutral-300 rounded-md"
+                      id="passwordConfirm"
+                      name="passwordConfirm"
+                      type="password"
+                      value={passwordConfirm}
+                      onChange={(e) => setPasswordConfirm(e.target.value)}
+                    />
+                  </div>
+                  <PasswordHelper validateResult={passwordValidations} />
+                </>
+              )}
             </div>
 
             <button
@@ -112,6 +151,7 @@ export function AuthModal({ isOpen, onClose }: AuthModalProps) {
               </Button>
               <Button
                 className="bg-primary-600 hover:bg-primary-700 text-white"
+                disabled={!isValid}
                 type="submit"
               >
                 {isLogin ? "Sign in" : "Register"}
