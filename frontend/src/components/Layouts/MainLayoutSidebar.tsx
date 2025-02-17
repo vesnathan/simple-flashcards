@@ -8,14 +8,18 @@ import { Deck } from "@/types/deck"; // Fix import path
 import { useDeckStore } from "@/stores/deckStore"; // Fix import path
 import { useAuthStore } from "@/stores/authStore";
 import { AuthModal } from "@/components/auth/AuthModal";
+import { AddDeckModal } from "@/components/decks/AddDeckModal";
+import { generateId } from "@/utils/id";
 
 // Remove the interface since we don't need props anymore
 export function MainLayoutSidebar() {
-  const { setDeck, currentlySelectedDeck, localDecks, decks } = useDeckStore();
+  const { setDeck, currentlySelectedDeck, localDecks, decks, addLocalDeck } =
+    useDeckStore();
   const [activeCategory, setActiveCategory] = useState<"public" | "private">(
     "private",
   );
   const [showAuthModal, setShowAuthModal] = useState(false);
+  const [showAddDeckModal, setShowAddDeckModal] = useState(false);
   const { user, signOut } = useAuthStore();
 
   // Use decks from store directly
@@ -26,6 +30,19 @@ export function MainLayoutSidebar() {
 
   const handleDeckSelect = (deck: Deck) => {
     setDeck(deck);
+  };
+
+  const handleAddDeck = (title: string) => {
+    const newDeck: Deck = {
+      id: generateId(),
+      title,
+      cards: [],
+      isLocal: true,
+      lastModified: Date.now(),
+      syncStatus: "local",
+    };
+
+    addLocalDeck(newDeck);
   };
 
   return (
@@ -118,7 +135,7 @@ export function MainLayoutSidebar() {
       <div className="absolute bottom-0 left-0 right-0 p-4 border-t border-neutral-200 bg-white space-y-2">
         <Button
           className="w-full bg-primary-600 hover:bg-primary-700 text-white"
-          onPress={() => {}}
+          onPress={() => setShowAddDeckModal(true)}
         >
           Add Deck
         </Button>
@@ -142,6 +159,11 @@ export function MainLayoutSidebar() {
       <AuthModal
         isOpen={showAuthModal}
         onClose={() => setShowAuthModal(false)}
+      />
+      <AddDeckModal
+        isOpen={showAddDeckModal}
+        onClose={() => setShowAddDeckModal(false)}
+        onSubmit={handleAddDeck}
       />
     </div>
   );
