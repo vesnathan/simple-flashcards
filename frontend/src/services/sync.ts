@@ -7,28 +7,43 @@ import { Deck } from "@/types/deck";
 export const syncService = {
   async saveDeckToDb(deck: Deck): Promise<Deck> {
     try {
+      // Validate deck data before sending
+      if (!deck.cards || !Array.isArray(deck.cards)) {
+        console.error("Invalid deck data:", deck);
+        throw new Error("Invalid deck data: cards array is missing or invalid");
+      }
+
+      // Create a clean deck object
+      const deckToSync = {
+        id: deck.id,
+        title: deck.title,
+        cards: deck.cards.map((card) => ({
+          id: card.id,
+          question: card.question,
+          answer: card.answer,
+        })),
+        isPublic: deck.isPublic || false,
+        lastModified: Date.now(),
+      };
+
+      console.log("Sending deck to sync:", {
+        id: deckToSync.id,
+        title: deckToSync.title,
+        cards: deckToSync.cards,
+        cardCount: deckToSync.cards.length,
+      });
+
       const token = await authService.getToken();
 
       if (!token) {
         throw new Error("No auth token available");
       }
 
-      // Explicitly construct the deck object to send to DB
-      const dbDeck = {
-        id: deck.id,
-        title: deck.title,
-        cards: deck.cards,
-        userId: deck.userId,
-        isPublic: deck.isPublic,
-        lastModified: deck.lastModified,
-        createdAt: deck.createdAt,
-      };
-
       const apiUrl = process.env.NEXT_PUBLIC_API_URL;
 
       console.log("Syncing deck to DB:", {
-        ...dbDeck,
-        cardCount: deck.cards.length,
+        ...deckToSync,
+        cardCount: deckToSync.cards.length,
       });
 
       const response = await fetch(apiUrl || "", {
@@ -37,7 +52,7 @@ export const syncService = {
           "Content-Type": "application/json",
           Authorization: `Bearer ${token}`,
         },
-        body: JSON.stringify({ deck: dbDeck }),
+        body: JSON.stringify(deckToSync), // Send deck directly, not wrapped
       });
 
       if (!response.ok) {
@@ -53,7 +68,12 @@ export const syncService = {
 
       const result = await response.json();
 
-      return result.deck;
+      if (!result.cards || !Array.isArray(result.cards)) {
+        console.error("Invalid response:", result);
+        throw new Error("Server returned invalid deck format");
+      }
+
+      return result;
     } catch (error) {
       console.error("Sync error:", {
         name: error instanceof Error ? error.name : "Unknown",

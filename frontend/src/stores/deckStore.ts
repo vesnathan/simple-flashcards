@@ -11,7 +11,7 @@ interface DeckStore {
   currentlySelectedDeck: Deck | null;
   currentCard: CardType | null;
   setCurrentCard: (card: CardType) => void;
-  setDeck: (deck: Deck) => void;
+  setDeck: (deck: Deck | null) => void; // Update this line to allow null
   deleteCard: (card: CardType) => void;
   syncDeck: (deck: Deck) => Promise<void>;
   syncLocalDecks: () => Promise<void>;
@@ -26,10 +26,13 @@ interface DeckStore {
 
 export const useDeckStore = create<DeckStore>((set) => ({
   currentlySelectedDeck: null,
-  setDeck: (deck: Deck) =>
+  setDeck: (
+    deck: Deck | null, // Update parameter type
+  ) =>
     set({
       currentlySelectedDeck: deck,
-      currentCard: deck.cards.length > 0 ? deck.cards[0] : null, // Set first card when selecting deck
+      currentCard:
+        deck && deck.cards && deck.cards.length > 0 ? deck.cards[0] : null, // Handle null case
     }),
   currentCard: null,
   setCurrentCard: (card: CardType) => set({ currentCard: card }),
@@ -37,23 +40,25 @@ export const useDeckStore = create<DeckStore>((set) => ({
     set((state) => {
       if (!state.currentlySelectedDeck) return state;
 
+      const currentCards = state.currentlySelectedDeck.cards || [];
       const newCard: CardType = {
-        id: state.currentlySelectedDeck.cards.length, // Simple ID generation
+        id: currentCards.length,
         question,
         answer,
       };
 
       const updatedDeck = {
         ...state.currentlySelectedDeck,
-        cards: [...state.currentlySelectedDeck.cards, newCard],
+        cards: [...currentCards, newCard],
       };
 
-      // Set first card if this was the first card added
       const shouldSetCurrentCard =
-        !state.currentCard || state.currentlySelectedDeck.cards.length === 0;
+        !state.currentCard || currentCards.length === 0;
 
-      // If it's a local deck, update localDecks
+      // Save to localStorage if it's a local deck
       if (state.currentlySelectedDeck.isLocal) {
+        localStorageService.updateDeck(updatedDeck);
+
         return {
           ...state,
           currentlySelectedDeck: updatedDeck,
@@ -64,6 +69,7 @@ export const useDeckStore = create<DeckStore>((set) => ({
         };
       }
 
+      // If it's a non-local deck, update decks
       return {
         ...state,
         currentlySelectedDeck: updatedDeck,
@@ -76,18 +82,23 @@ export const useDeckStore = create<DeckStore>((set) => ({
   },
   deleteCard: (card: CardType) =>
     set((state) => {
-      if (state.currentlySelectedDeck) {
-        return {
-          currentlySelectedDeck: {
-            ...state.currentlySelectedDeck,
-            cards: state.currentlySelectedDeck.cards.filter(
-              (c) => c.id !== card.id,
-            ),
-          },
-        };
+      if (!state.currentlySelectedDeck) return state;
+
+      const updatedDeck = {
+        ...state.currentlySelectedDeck,
+        cards: state.currentlySelectedDeck.cards.filter(
+          (c) => c.id !== card.id,
+        ),
+      };
+
+      // Save to localStorage if it's a local deck
+      if (state.currentlySelectedDeck.isLocal) {
+        localStorageService.updateDeck(updatedDeck);
       }
 
-      return state;
+      return {
+        currentlySelectedDeck: updatedDeck,
+      };
     }),
   syncDeck: async (deck: Deck) => {
     set((state) => ({
@@ -186,24 +197,28 @@ export const useDeckStore = create<DeckStore>((set) => ({
     try {
       const [publicDecks, userDecks] = await Promise.all([
         deckService.getPublicDecks(),
-        deckService.getUserDecks().catch(() => []) // Handle failure gracefully
+        deckService.getUserDecks().catch(() => []), // Handle failure gracefully
       ]);
 
-      console.log('Loaded decks:', {
+      console.log("Loaded decks:", {
         public: publicDecks.length,
-        user: userDecks.length
+        user: userDecks.length,
       });
 
       // Combine and deduplicate by ID
       const allDecks = [...publicDecks, ...userDecks];
-      const uniqueDecks = allDecks.reduce((acc, deck) => {
-        acc[deck.id] = deck;
-        return acc;
-      }, {} as Record<string, Deck>);
+      const uniqueDecks = allDecks.reduce(
+        (acc, deck) => {
+          acc[deck.id] = deck;
+
+          return acc;
+        },
+        {} as Record<string, Deck>,
+      );
 
       set((state) => ({
         ...state,
-        decks: Object.values(uniqueDecks)
+        decks: Object.values(uniqueDecks),
       }));
     } catch (error) {
       console.error("Failed to load decks:", error);

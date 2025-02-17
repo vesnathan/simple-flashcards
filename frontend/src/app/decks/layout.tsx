@@ -9,7 +9,7 @@ export default function DecksLayout({
 }) {
   return (
     <div className="min-h-screen bg-neutral-50">
-      <MainLayoutSidebar /> {/* Remove decks prop */}
+      <MainLayoutSidebar />
       {children}
     </div>
   );

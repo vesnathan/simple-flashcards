@@ -1,5 +1,7 @@
 /* eslint-disable no-console */
 import { create } from "zustand";
+import { signOut, getCurrentUser } from "aws-amplify/auth";
+import { Cache } from "aws-amplify/utils"; // Fix: Change cache to Cache
 
 import { useDeckStore } from "./deckStore";
 
@@ -28,10 +30,17 @@ export const useAuthStore = create<AuthState>((set) => ({
 
   checkAuth: async () => {
     try {
-      const user = await authService.getCurrentUser();
+      const user = await getCurrentUser();
 
       set({ user, loading: false });
     } catch {
+      // Clear tokens if not authenticated
+      await Cache.clear(); // Fix: Use Cache instead of cache
+      localStorage.removeItem("lastAuthUser");
+      localStorage.removeItem("accessToken");
+      localStorage.removeItem("idToken");
+      localStorage.removeItem("refreshToken");
+
       set({ user: null, loading: false });
     }
   },
@@ -82,9 +91,21 @@ export const useAuthStore = create<AuthState>((set) => ({
 
   signOut: async () => {
     try {
-      await authService.signOut();
+      await signOut();
+      // Clear Amplify cache
+      await Cache.clear(); // Fix: Use Cache instead of cache
+
+      // Clear any local storage items related to auth
+      localStorage.removeItem("lastAuthUser");
+      localStorage.removeItem("accessToken");
+      localStorage.removeItem("idToken");
+      localStorage.removeItem("refreshToken");
+
+      // Clear user decks when signing out
+      useDeckStore.getState().clearUserDecks();
       set({ user: null, error: null });
     } catch (error: any) {
+      console.error("Sign out error:", error);
       set({ error: error.message });
       throw error;
     }

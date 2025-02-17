@@ -13,19 +13,10 @@ const verifier = CognitoJwtVerifier.create({
   clientId: process.env.COGNITO_CLIENT_ID || "",
 });
 
-interface SyncPayload {
-  deck: {
-    id?: string;
-    title: string;
-    cards: Array<{
-      id: string;
-      question: string;
-      answer: string;
-    }>;
-    lastModified: number;
-    isPublic: boolean;
-    createdAt?: number; // Added optional property
-  };
+interface Card {
+  id: number;
+  question: string;
+  answer: string;
 }
 
 export const syncDeck = async (
@@ -95,48 +86,76 @@ export const syncDeck = async (
         };
       }
 
-      const { deck }: SyncPayload = JSON.parse(event.body);
+      // Parse and validate request body
+      const rawBody = JSON.parse(event.body || "");
 
-      console.log(`[${requestId}] Parsed deck data`, {
-        deckId: deck.id,
-        title: deck.title,
-        cardCount: deck.cards.length,
-      });
+      console.log("Received raw body:", rawBody);
 
-      const deckId = deck.id || Date.now().toString();
+      // Handle the deck data directly, not expecting a nested structure
+      const deck = rawBody;
 
-      console.log(`[${requestId}] Using deck ID: ${deckId}`);
+      if (!deck || !deck.title || !Array.isArray(deck.cards)) {
+        console.error("Invalid deck data:", deck);
+
+        return {
+          statusCode: 400,
+          headers: corsHeaders,
+          body: JSON.stringify({
+            message: "Invalid deck format",
+            received: deck,
+            expected: {
+              title: "string",
+              cards: "array of { id, question, answer }",
+            },
+          }),
+        };
+      }
+
+      // Validate cards array with proper typing
+      if (
+        !deck.cards.every((card: Card) => {
+          return (
+            typeof card.id === "number" &&
+            typeof card.question === "string" &&
+            typeof card.answer === "string"
+          );
+        })
+      ) {
+        console.error("Invalid cards format:", deck.cards);
+
+        return {
+          statusCode: 400,
+          headers: corsHeaders,
+          body: JSON.stringify({
+            message: "Invalid cards format",
+            received: deck.cards,
+          }),
+        };
+      }
 
       const finalDeck = {
         ...deck,
-        id: deckId,
         userId: payload.sub,
         lastModified: Date.now(),
-        createdAt: deck.createdAt || Date.now(), // Ensure createdAt is always set
+        createdAt: deck.createdAt || Date.now(),
       };
 
-      console.log(`[${requestId}] Attempting to save deck to DynamoDB`, {
-        deckId,
-        userId: payload.sub,
-        table: TABLE_NAME,
+      console.log("Saving deck:", {
+        id: finalDeck.id,
+        title: finalDeck.title,
+        cardCount: finalDeck.cards.length,
+        cards: finalDeck.cards,
       });
 
-      const putParams = {
+      await dynamodb.put({
         TableName: TABLE_NAME,
         Item: finalDeck,
-      };
-
-      await dynamodb.put(putParams);
-
-      console.log(`[${requestId}] Successfully saved deck`);
+      });
 
       return {
         statusCode: 200,
         headers: corsHeaders,
-        body: JSON.stringify({
-          message: "Deck synchronized successfully",
-          deck: finalDeck,
-        }),
+        body: JSON.stringify(finalDeck),
       };
     }
 

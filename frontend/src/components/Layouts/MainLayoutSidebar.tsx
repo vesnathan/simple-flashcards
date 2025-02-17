@@ -1,70 +1,31 @@
-/* eslint-disable no-console */
 "use client";
 
 import { cn } from "@heroui/theme";
 import { Button } from "@heroui/button";
-import { useState, useEffect } from "react";
+import { useState } from "react";
 
-import { generateId } from "@/utils/id";
-import { Deck } from "@/types/deck";
-import { useDeckStore } from "@/stores/deckStore";
+import { Deck } from "@/types/deck"; // Fix import path
+import { useDeckStore } from "@/stores/deckStore"; // Fix import path
 import { useAuthStore } from "@/stores/authStore";
 import { AuthModal } from "@/components/auth/AuthModal";
-import { AddDeckModal } from "@/components/decks/AddDeckModal";
 
+// Remove the interface since we don't need props anymore
 export function MainLayoutSidebar() {
-  const { setDeck, currentlySelectedDeck, localDecks, decks, loadUserDecks } =
-    useDeckStore();
+  const { setDeck, currentlySelectedDeck, localDecks, decks } = useDeckStore();
   const [activeCategory, setActiveCategory] = useState<"public" | "private">(
     "private",
   );
   const [showAuthModal, setShowAuthModal] = useState(false);
-  const [showAddDeckModal, setShowAddDeckModal] = useState(false);
   const { user, signOut } = useAuthStore();
 
-  // Load public decks on mount
-  useEffect(() => {
-    const loadDecks = async () => {
-      try {
-        await loadUserDecks();
-      } catch (error) {
-        console.error("Failed to load decks:", error);
-      }
-    };
-
-    loadDecks();
-  }, [loadUserDecks]);
-
-  // Update deck filtering logic to correctly show public decks
+  // Use decks from store directly
   const visibleDecks =
     activeCategory === "private"
       ? [...localDecks, ...decks.filter((d) => !d.isPublic)]
-      : decks.filter((d) => d.isPublic === true); // Explicitly check for true
-
-  // Add logging to debug deck visibility
-  console.log("Decks state:", {
-    localDecks: localDecks.length,
-    allDecks: decks.length,
-    visibleDecks: visibleDecks.length,
-    activeCategory,
-    publicDecks: decks.filter((d) => d.isPublic === true).length,
-  });
+      : decks.filter((d) => d.isPublic);
 
   const handleDeckSelect = (deck: Deck) => {
     setDeck(deck);
-  };
-
-  const handleAddDeck = (title: string) => {
-    const newDeck: Deck = {
-      id: generateId(),
-      title,
-      cards: [],
-      isLocal: true,
-      lastModified: Date.now(),
-      syncStatus: "local",
-    };
-
-    useDeckStore.getState().addLocalDeck(newDeck);
   };
 
   return (
@@ -157,7 +118,7 @@ export function MainLayoutSidebar() {
       <div className="absolute bottom-0 left-0 right-0 p-4 border-t border-neutral-200 bg-white space-y-2">
         <Button
           className="w-full bg-primary-600 hover:bg-primary-700 text-white"
-          onPress={() => setShowAddDeckModal(true)}
+          onPress={() => {}}
         >
           Add Deck
         </Button>
@@ -173,7 +134,7 @@ export function MainLayoutSidebar() {
             className="w-full bg-neutral-200 hover:bg-neutral-300 text-neutral-700"
             onPress={() => setShowAuthModal(true)}
           >
-            Sign In to Sync
+            {localDecks.length > 0 ? "Sign In to Sync" : "Sign In"}
           </Button>
         )}
       </div>
@@ -181,11 +142,6 @@ export function MainLayoutSidebar() {
       <AuthModal
         isOpen={showAuthModal}
         onClose={() => setShowAuthModal(false)}
-      />
-      <AddDeckModal
-        isOpen={showAddDeckModal}
-        onClose={() => setShowAddDeckModal(false)}
-        onSubmit={handleAddDeck}
       />
     </div>
   );

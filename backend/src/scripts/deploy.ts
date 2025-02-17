@@ -35,7 +35,6 @@ import { dynamodbService } from "../services/dynamodb";
 import { iamService } from "../services/iam";
 import { CONFIG } from "../config/aws";
 import { cognitoService } from "../services/cognito";
-import { seedDatabase } from "../utils/dbSeed";
 
 const lambda = new LambdaClient({
   region: "ap-southeast-2",
@@ -825,8 +824,8 @@ async function deploy() {
     console.log("Client ID:", authConfig.clientId);
 
     if (tableWasCreated) {
-      console.log("New table created, seeding database...");
-      await seedDatabase();
+      console.log("New table created, running seed...");
+      await dynamodbService.seedTable();
       console.log("Database seeded successfully");
     }
 
