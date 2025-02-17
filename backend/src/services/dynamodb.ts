@@ -64,42 +64,36 @@ export const dynamodbService = {
     });
 
     try {
-      // Check if table exists
       await client.send(
-        new DescribeTableCommand({ TableName: CONFIG.DECKS_TABLE }),
+        new CreateTableCommand({
+          TableName: CONFIG.DECKS_TABLE,
+          AttributeDefinitions: [
+            { AttributeName: "userId", AttributeType: "S" },
+            { AttributeName: "id", AttributeType: "S" },
+          ],
+          KeySchema: [
+            { AttributeName: "userId", KeyType: "HASH" },
+            { AttributeName: "id", KeyType: "RANGE" },
+          ],
+          ProvisionedThroughput: {
+            ReadCapacityUnits: 5,
+            WriteCapacityUnits: 5,
+          },
+        }),
       );
-      console.log(`Table ${CONFIG.DECKS_TABLE} already exists`);
 
-      return false;
+      console.log(`Table ${CONFIG.DECKS_TABLE} created successfully`);
+      await this.waitForTable();
+
+      return true;
     } catch (error: any) {
-      if (error.name !== "ResourceNotFoundException") {
-        throw error;
+      if (error.name === "ResourceInUseException") {
+        console.log(`Table ${CONFIG.DECKS_TABLE} already exists`);
+
+        return false;
       }
+      throw error;
     }
-
-    // Create table if it doesn't exist
-    await client.send(
-      new CreateTableCommand({
-        TableName: CONFIG.DECKS_TABLE,
-        AttributeDefinitions: [
-          { AttributeName: "id", AttributeType: "S" },
-          { AttributeName: "userId", AttributeType: "S" },
-        ],
-        KeySchema: [
-          { AttributeName: "userId", KeyType: "HASH" },
-          { AttributeName: "id", KeyType: "RANGE" },
-        ],
-        ProvisionedThroughput: {
-          ReadCapacityUnits: 5,
-          WriteCapacityUnits: 5,
-        },
-      }),
-    );
-
-    console.log(`Table ${CONFIG.DECKS_TABLE} created successfully`);
-    await this.waitForTable();
-
-    return true;
   },
 
   async deleteTable(): Promise<void> {

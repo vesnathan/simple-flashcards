@@ -39,20 +39,21 @@ export const syncService = {
         throw new Error("No auth token available");
       }
 
-      const apiUrl = process.env.NEXT_PUBLIC_API_URL;
+      const apiUrl = `${process.env.NEXT_PUBLIC_API_URL}/sync`; // Update URL to use sync endpoint
 
-      console.log("Syncing deck to DB:", {
-        ...deckToSync,
-        cardCount: deckToSync.cards.length,
+      console.log("Syncing deck:", {
+        id: deck.id,
+        title: deck.title,
+        cardCount: deck.cards.length,
       });
 
-      const response = await fetch(apiUrl || "", {
+      const response = await fetch(apiUrl, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
           Authorization: `Bearer ${token}`,
         },
-        body: JSON.stringify(deckToSync), // Send deck directly, not wrapped
+        body: JSON.stringify(deck),
       });
 
       if (!response.ok) {
@@ -90,9 +91,12 @@ export const syncService = {
 
     const syncPromises = localDecks.map(async (deck) => {
       try {
-        await this.saveDeckToDb(deck);
+        const syncedDeck = await this.saveDeckToDb(deck);
+
         localStorageService.deleteDeck(deck.id);
         console.log("Successfully synced and removed deck:", deck.id);
+
+        return syncedDeck;
       } catch (error) {
         console.error(`Failed to sync deck ${deck.id}:`, error);
         throw error;

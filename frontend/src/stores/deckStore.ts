@@ -3,6 +3,8 @@ import { create } from "zustand";
 
 import { Deck, CardType } from "../../../types/deck";
 
+import { generateId } from "@/utils/id";
+import { authService } from "@/services/auth";
 import { deckService } from "@/services/api";
 import { syncService } from "@/services/sync";
 import { localStorageService } from "@/services/localStorage";
@@ -11,28 +13,27 @@ interface DeckStore {
   currentlySelectedDeck: Deck | null;
   currentCard: CardType | null;
   setCurrentCard: (card: CardType) => void;
-  setDeck: (deck: Deck | null) => void; // Update this line to allow null
+  setDeck: (deck: Deck) => void;
   deleteCard: (card: CardType) => void;
   syncDeck: (deck: Deck) => Promise<void>;
   syncLocalDecks: () => Promise<void>;
-  decks: Deck[];
-  loadLocalDecks: () => void;
+  publicDecks: Deck[];
+  privateDecks: Deck[];
   localDecks: Deck[];
+  loadLocalDecks: () => void;
   addCard: (question: string, answer: string) => void;
-  addLocalDeck: (deck: Deck) => void;
-  loadUserDecks: () => Promise<void>; // Remove userId parameter
+  addDeck: (title: string) => Promise<void>;
+  loadUserDecks: () => Promise<void>;
   clearUserDecks: () => void;
+  loadPublicDecks: () => Promise<void>; // Add this line
 }
 
-export const useDeckStore = create<DeckStore>((set) => ({
+export const useDeckStore = create<DeckStore>((set, get) => ({
   currentlySelectedDeck: null,
-  setDeck: (
-    deck: Deck | null, // Update parameter type
-  ) =>
+  setDeck: (deck: Deck) =>
     set({
       currentlySelectedDeck: deck,
-      currentCard:
-        deck && deck.cards && deck.cards.length > 0 ? deck.cards[0] : null, // Handle null case
+      currentCard: deck.cards.length > 0 ? deck.cards[0] : null, // Set first card when selecting deck
     }),
   currentCard: null,
   setCurrentCard: (card: CardType) => set({ currentCard: card }),
@@ -40,41 +41,32 @@ export const useDeckStore = create<DeckStore>((set) => ({
     set((state) => {
       if (!state.currentlySelectedDeck) return state;
 
-      const currentCards = state.currentlySelectedDeck.cards || [];
       const newCard: CardType = {
-        id: currentCards.length,
+        id: state.currentlySelectedDeck.cards.length, // Simple ID generation
         question,
         answer,
       };
 
       const updatedDeck = {
         ...state.currentlySelectedDeck,
-        cards: [...currentCards, newCard],
+        cards: [...state.currentlySelectedDeck.cards, newCard],
       };
 
-      const shouldSetCurrentCard =
-        !state.currentCard || currentCards.length === 0;
-
-      // Save to localStorage if it's a local deck
+      // If it's a local deck, update localDecks
       if (state.currentlySelectedDeck.isLocal) {
-        localStorageService.updateDeck(updatedDeck);
-
         return {
           ...state,
           currentlySelectedDeck: updatedDeck,
-          currentCard: shouldSetCurrentCard ? newCard : state.currentCard,
           localDecks: state.localDecks.map((d) =>
             d.id === updatedDeck.id ? updatedDeck : d,
           ),
         };
       }
 
-      // If it's a non-local deck, update decks
       return {
         ...state,
         currentlySelectedDeck: updatedDeck,
-        currentCard: shouldSetCurrentCard ? newCard : state.currentCard,
-        decks: state.decks.map((d) =>
+        privateDecks: state.privateDecks.map((d) =>
           d.id === updatedDeck.id ? updatedDeck : d,
         ),
       };
@@ -91,36 +83,47 @@ export const useDeckStore = create<DeckStore>((set) => ({
         ),
       };
 
-      // Save to localStorage if it's a local deck
+      // Update in local storage if it's a local deck
       if (state.currentlySelectedDeck.isLocal) {
         localStorageService.updateDeck(updatedDeck);
+
+        return {
+          ...state,
+          currentlySelectedDeck: updatedDeck,
+          localDecks: state.localDecks.map((d) =>
+            d.id === updatedDeck.id ? updatedDeck : d,
+          ),
+        };
       }
 
+      // Otherwise update in the regular decks array
       return {
+        ...state,
         currentlySelectedDeck: updatedDeck,
+        privateDecks: state.privateDecks.map((d) =>
+          d.id === updatedDeck.id ? updatedDeck : d,
+        ),
       };
     }),
+
   syncDeck: async (deck: Deck) => {
     set((state) => ({
-      decks: state.decks.map((d) =>
-        d.id === deck.id ? { ...d, syncStatus: "syncing" as const } : d,
+      privateDecks: state.privateDecks.map((d) =>
+        d.id === deck.id ? { ...d, syncStatus: "syncing" } : d,
       ),
     }));
 
     try {
-      const syncedDeck = await syncService.saveDeckToDb(deck);
-
+      await syncService.saveDeckToDb(deck);
       set((state) => ({
-        decks: [
-          ...state.decks.filter((d) => d.id !== deck.id),
-          { ...syncedDeck, syncStatus: "synced" as const },
-        ],
-        localDecks: state.localDecks.filter((d) => d.id !== deck.id),
+        privateDecks: state.privateDecks.map((d) =>
+          d.id === deck.id ? { ...d, syncStatus: "synced", isLocal: false } : d,
+        ),
       }));
     } catch (error) {
       set((state) => ({
-        decks: state.decks.map((d) =>
-          d.id === deck.id ? { ...d, syncStatus: "local" as const } : d,
+        privateDecks: state.privateDecks.map((d) =>
+          d.id === deck.id ? { ...d, syncStatus: "local" } : d,
         ),
       }));
       throw error;
@@ -142,95 +145,125 @@ export const useDeckStore = create<DeckStore>((set) => ({
       set((state) => ({
         localDecks: state.localDecks.map((d) => ({
           ...d,
-          syncStatus: "syncing" as const,
+          syncStatus: "syncing",
         })),
       }));
 
-      // Sync decks and add to decks array
-      for (const deck of localDecks) {
-        try {
-          const syncedDeck = await syncService.saveDeckToDb(deck);
+      await syncService.syncLocalDecks();
 
-          set((state) => ({
-            decks: [...state.decks, { ...syncedDeck, syncStatus: "synced" }],
-          }));
-          localStorageService.deleteDeck(deck.id);
-        } catch (error) {
-          console.error(`Failed to sync deck ${deck.id}:`, error);
-          throw error;
-        }
-      }
+      // Load updated decks from server after sync
+      const userDecks = await deckService.getUserDecks();
 
-      // Clear synced decks from state
       set((state) => ({
-        localDecks: state.localDecks.filter((d) => d.syncStatus !== "syncing"),
+        localDecks: [],
+        privateDecks: userDecks,
+        currentlySelectedDeck:
+          userDecks.find((d) => d.id === state.currentlySelectedDeck?.id) ||
+          state.currentlySelectedDeck,
       }));
     } catch (error) {
       console.error("Sync failed:", error);
       // Reset sync status on failure
       set((state) => ({
         localDecks: state.localDecks.map((d) =>
-          d.syncStatus === "syncing"
-            ? { ...d, syncStatus: "local" as const }
-            : d,
+          d.syncStatus === "syncing" ? { ...d, syncStatus: "local" } : d,
         ),
       }));
       throw error;
     }
   },
-  decks: [],
-  localDecks: localStorageService.getDecks(),
+  publicDecks: [],
+  privateDecks: [],
+  localDecks: [],
 
   loadLocalDecks: () => {
     const decks = localStorageService.getDecks();
 
     set({ localDecks: decks });
   },
-  addLocalDeck: (deck) => {
-    localStorageService.addDeck(deck);
-    set({
-      localDecks: localStorageService.getDecks(),
-      currentlySelectedDeck: deck,
-    });
-  },
-  loadUserDecks: async () => {
+
+  addDeck: async (title: string) => {
     try {
-      const [publicDecks, userDecks] = await Promise.all([
-        deckService.getPublicDecks(),
-        deckService.getUserDecks().catch(() => []), // Handle failure gracefully
-      ]);
+      const token = await authService.getToken();
 
-      console.log("Loaded decks:", {
-        public: publicDecks.length,
-        user: userDecks.length,
-      });
+      if (token) {
+        const newDeck = await deckService.createDeck(title);
 
-      // Combine and deduplicate by ID
-      const allDecks = [...publicDecks, ...userDecks];
-      const uniqueDecks = allDecks.reduce(
-        (acc, deck) => {
-          acc[deck.id] = deck;
+        set((state) => ({
+          privateDecks: [...state.privateDecks, newDeck],
+          currentlySelectedDeck: newDeck,
+        }));
 
-          return acc;
-        },
-        {} as Record<string, Deck>,
-      );
+        return;
+      }
 
-      set((state) => ({
-        ...state,
-        decks: Object.values(uniqueDecks),
+      // Fall back to local storage if not authenticated
+      const newDeck: Deck = {
+        id: generateId(),
+        title,
+        cards: [],
+        isLocal: true,
+        lastModified: Date.now(),
+        syncStatus: "local",
+      };
+
+      localStorageService.addDeck(newDeck);
+      set(() => ({
+        localDecks: localStorageService.getDecks(),
+        currentlySelectedDeck: newDeck,
       }));
     } catch (error) {
-      console.error("Failed to load decks:", error);
+      console.error("Failed to create deck:", error);
       throw error;
     }
   },
+
+  loadPublicDecks: async () => {
+    try {
+      console.log("Loading public decks...");
+      const publicDecks = await deckService.getDecks();
+
+      console.log("Received public decks:", {
+        count: publicDecks.length,
+        decks: publicDecks.map((d) => ({ id: d.id, title: d.title })),
+      });
+
+      set((state) => ({
+        ...state,
+        publicDecks: publicDecks.map((deck) => ({ ...deck, isPublic: true })),
+      }));
+    } catch (error) {
+      console.error("Failed to load public decks:", error);
+    }
+  },
+
+  loadUserDecks: async () => {
+    try {
+      // Now only load private user decks
+      const userDecks = await deckService.getUserDecks().catch((err) => {
+        console.error("Failed to fetch user decks:", err);
+
+        return [];
+      });
+
+      console.log("Setting private decks:", {
+        count: userDecks.length,
+        decks: userDecks.map((d) => ({ id: d.id, title: d.title })),
+      });
+
+      set((state) => ({
+        ...state,
+        privateDecks: userDecks.filter((deck) => !deck.isPublic),
+      }));
+    } catch (error) {
+      console.error("Failed to load private decks:", error);
+    }
+  },
+
   clearUserDecks: () => {
     set((state) => ({
       ...state,
-      decks: state.decks.filter(
-        (deck) => deck.isPublic || deck.userId === "system",
-      ),
+      privateDecks: [],
       currentlySelectedDeck: null,
       currentCard: null,
     }));

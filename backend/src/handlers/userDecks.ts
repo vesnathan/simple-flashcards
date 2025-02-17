@@ -55,9 +55,9 @@ export const handler = async (
       const payload = await verifier.verify(token);
       const userId = payload.sub;
 
-      const result = await dynamodb.scan({
+      const result = await dynamodb.query({
         TableName: TABLE_NAME,
-        FilterExpression: "userId = :userId",
+        KeyConditionExpression: "userId = :userId",
         ExpressionAttributeValues: { ":userId": userId },
       });
 

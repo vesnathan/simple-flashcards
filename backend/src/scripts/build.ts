@@ -34,7 +34,8 @@ async function build() {
     entryPoints: [
       join(__dirname, "../handlers/sync.ts"),
       join(__dirname, "../handlers/decks.ts"),
-      join(__dirname, "../handlers/userDecks.ts"), // Add new handler
+      join(__dirname, "../handlers/userDecks.ts"),
+      join(__dirname, "../handlers/createDeck.ts"),
     ],
     bundle: true,
     minify: true,

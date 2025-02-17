@@ -25,6 +25,7 @@ import {
   DeleteRestApiCommand,
   CreateStageCommand,
   DeleteStageCommand,
+  GetMethodCommand,
 } from "@aws-sdk/client-api-gateway";
 import {
   CloudWatchLogsClient,
@@ -224,55 +225,51 @@ async function createApiResources(
   api: { id: string },
   rootResourceId: string,
 ): Promise<Record<string, ApiGatewayResource>> {
-  // First create all resources
-  const resources = {
-    decks: await apiGateway.send(
-      new CreateResourceCommand({
-        restApiId: api.id,
-        parentId: rootResourceId,
-        pathPart: "decks",
-      }),
-    ),
-    public: await apiGateway.send(
-      new CreateResourceCommand({
-        restApiId: api.id,
-        parentId: rootResourceId,
-        pathPart: "public",
-      }),
-    ),
-    userDecks: await apiGateway.send(
-      new CreateResourceCommand({
-        restApiId: api.id,
-        parentId: rootResourceId,
-        pathPart: "user-decks",
-      }),
-    ),
-    proxy: await apiGateway.send(
-      new CreateResourceCommand({
-        restApiId: api.id,
-        parentId: rootResourceId,
-        pathPart: "{proxy+}",
-      }),
-    ),
+  // Add delay before creating resources
+  await new Promise((resolve) => setTimeout(resolve, 5000));
+
+  // Create resources one by one with delay between
+  const resources: Record<string, any> = {};
+
+  const resourceConfigs = {
+    decks: { pathPart: "decks" },
+    public: { pathPart: "public" },
+    userDecks: { pathPart: "user-decks" },
+    proxy: { pathPart: "{proxy+}" },
   };
 
-  // Type check and transform responses
-  const validatedResources: Record<string, ApiGatewayResource> = {};
+  for (const [key, config] of Object.entries(resourceConfigs)) {
+    try {
+      console.log(`Creating resource: ${key}`);
+      const resource = await apiGateway.send(
+        new CreateResourceCommand({
+          restApiId: api.id,
+          parentId: rootResourceId,
+          pathPart: config.pathPart,
+        }),
+      );
 
-  for (const [key, resource] of Object.entries(resources)) {
-    if (!resource.id) {
-      throw new Error(`Failed to create ${key} resource - no ID returned`);
+      if (!resource.id) {
+        throw new Error(`Failed to create ${key} resource - no ID returned`);
+      }
+
+      resources[key] = {
+        id: resource.id,
+        restApiId: api.id,
+      };
+
+      // Add delay between resource creation
+      await new Promise((resolve) => setTimeout(resolve, 3000));
+    } catch (error: any) {
+      if (error.name === "ConflictException") {
+        console.log(`Resource ${key} already exists, skipping...`);
+        continue;
+      }
+      throw error;
     }
-    validatedResources[key] = {
-      id: resource.id,
-      restApiId: api.id,
-    };
   }
 
-  // Add a delay after creating resources
-  await new Promise((resolve) => setTimeout(resolve, 2000)); // Reduced from 5s to 2s
-
-  return validatedResources;
+  return resources;
 }
 
 async function deployAPI(
@@ -354,10 +351,28 @@ async function deployAPI(
       "OPTIONS",
     ]);
 
-    // Add sync endpoint
+    // Add create endpoint
     await addResourceMethods(api.id, apiResources.decks.id, syncFunctionArn, [
       "POST",
+      "OPTIONS",
     ]);
+
+    // Add /create endpoint
+    const createResource = await apiGateway.send(
+      new CreateResourceCommand({
+        restApiId: api.id,
+        parentId: apiResources.decks.id,
+        pathPart: "create",
+      }),
+    );
+
+    // Add methods to /decks/create
+    if (createResource.id) {
+      await addResourceMethods(api.id, createResource.id, syncFunctionArn, [
+        "POST",
+        "OPTIONS",
+      ]);
+    }
 
     // Add methods to /public
     await addResourceMethods(api.id, apiResources.public.id, functionArn, [
@@ -439,13 +454,38 @@ async function addResourceMethods(
   methods: string[],
 ) {
   for (const method of methods) {
-    if (method === "OPTIONS") {
-      await addOptionsMethod(apiId, resourceId);
-    } else {
-      await addProxyMethod(apiId, resourceId, method, functionArn);
+    try {
+      // Check if method already exists
+      try {
+        await apiGateway.send(
+          new GetMethodCommand({
+            restApiId: apiId,
+            resourceId: resourceId,
+            httpMethod: method,
+          }),
+        );
+        console.log(
+          `Method ${method} already exists for resource ${resourceId}, skipping...`,
+        );
+        continue;
+      } catch (error: any) {
+        if (error.name !== "NotFoundException") {
+          throw error;
+        }
+      }
+
+      // Method doesn't exist, create it
+      if (method === "OPTIONS") {
+        await addOptionsMethod(apiId, resourceId);
+      } else {
+        await addProxyMethod(apiId, resourceId, method, functionArn);
+      }
+      // Add longer delay between methods
+      await new Promise((resolve) => setTimeout(resolve, 2000));
+    } catch (error) {
+      console.error(`Failed to add method ${method}:`, error);
+      throw error;
     }
-    // Add small delay between methods
-    await new Promise((resolve) => setTimeout(resolve, 1000));
   }
 }
 

@@ -1,20 +1,25 @@
+/* eslint-disable no-console */
 "use client";
 
 import { cn } from "@heroui/theme";
 import { Button } from "@heroui/button";
-import { useState } from "react";
+import { useState, useEffect } from "react";
 
-import { Deck } from "@/types/deck"; // Fix import path
-import { useDeckStore } from "@/stores/deckStore"; // Fix import path
+import { Deck } from "@/types/deck";
+import { useDeckStore } from "@/stores/deckStore";
 import { useAuthStore } from "@/stores/authStore";
 import { AuthModal } from "@/components/auth/AuthModal";
 import { AddDeckModal } from "@/components/decks/AddDeckModal";
-import { generateId } from "@/utils/id";
 
-// Remove the interface since we don't need props anymore
 export function MainLayoutSidebar() {
-  const { setDeck, currentlySelectedDeck, localDecks, decks, addLocalDeck } =
-    useDeckStore();
+  const {
+    setDeck,
+    currentlySelectedDeck,
+    localDecks,
+    publicDecks,
+    privateDecks,
+    addDeck,
+  } = useDeckStore();
   const [activeCategory, setActiveCategory] = useState<"public" | "private">(
     "private",
   );
@@ -22,27 +27,53 @@ export function MainLayoutSidebar() {
   const [showAddDeckModal, setShowAddDeckModal] = useState(false);
   const { user, signOut } = useAuthStore();
 
-  // Use decks from store directly
+  // Log current state whenever it changes
+  useEffect(() => {
+    console.log("Deck state updated:", {
+      public: publicDecks.map((d) => ({ id: d.id, title: d.title })),
+      private: privateDecks.map((d) => ({ id: d.id, title: d.title })),
+      local: localDecks.map((d) => ({ id: d.id, title: d.title })),
+      activeCategory,
+    });
+  }, [publicDecks, privateDecks, localDecks, activeCategory]);
+
   const visibleDecks =
     activeCategory === "private"
-      ? [...localDecks, ...decks.filter((d) => !d.isPublic)]
-      : decks.filter((d) => d.isPublic);
+      ? [...localDecks, ...privateDecks]
+      : publicDecks;
+
+  // Debug visible decks
+  useEffect(() => {
+    console.log("Visible decks updated:", {
+      category: activeCategory,
+      count: visibleDecks.length,
+      decks: visibleDecks.map((d) => ({ id: d.id, title: d.title })),
+    });
+  }, [visibleDecks, activeCategory]);
+
+  // Add debugging effect
+  useEffect(() => {
+    console.log("MainLayoutSidebar state:", {
+      activeCategory,
+      publicDecksCount: publicDecks.length,
+      publicDecks: publicDecks.map((d) => ({ id: d.id, title: d.title })),
+      privateDeckCount: privateDecks.length,
+      localDecksCount: localDecks.length,
+      visibleDecksCount: visibleDecks.length,
+    });
+  }, [activeCategory, publicDecks, privateDecks, localDecks, visibleDecks]);
 
   const handleDeckSelect = (deck: Deck) => {
     setDeck(deck);
   };
 
-  const handleAddDeck = (title: string) => {
-    const newDeck: Deck = {
-      id: generateId(),
-      title,
-      cards: [],
-      isLocal: true,
-      lastModified: Date.now(),
-      syncStatus: "local",
-    };
-
-    addLocalDeck(newDeck);
+  const handleAddDeck = async (title: string) => {
+    try {
+      await addDeck(title);
+      setShowAddDeckModal(false);
+    } catch (error) {
+      console.error("Failed to create deck:", error);
+    }
   };
 
   return (

@@ -5,28 +5,54 @@ import { authService } from "./auth";
 
 import { env } from "@/config/env";
 
-const getBaseUrl = () => {
-  const apiUrl = env.api.baseUrl;
-  // Remove '/decks' and ensure we have the stage in the path
-  const baseUrl = apiUrl.split("/decks")[0];
-
-  console.log("API Base URL:", baseUrl); // Debug log
-
-  return baseUrl;
-};
-
 export const deckService = {
   async getDecks(): Promise<Deck[]> {
-    const response = await fetch(env.api.baseUrl);
+    console.log("Fetching public decks from:", env.api.baseUrl);
 
-    console.log("Fetching decks from:", env.api.baseUrl);
+    try {
+      const response = await fetch(env.api.baseUrl);
 
-    if (!response.ok) {
-      console.error("API Error:", response.status, response.statusText);
-      throw new Error("Failed to fetch decks");
+      console.log("Raw response:", response);
+
+      if (!response.ok) {
+        const errorText = await response.text();
+
+        console.error("API Error:", {
+          status: response.status,
+          statusText: response.statusText,
+          body: errorText,
+        });
+        throw new Error(`Failed to fetch decks: ${errorText}`);
+      }
+
+      const data = await response.json();
+
+      console.log("Raw deck data:", data);
+
+      // Ensure each deck has the required fields
+      const publicDecks = (data || []).map((deck: Deck) => ({
+        ...deck,
+        isPublic: true,
+        syncStatus: deck.syncStatus || "synced",
+        lastModified: deck.lastModified || Date.now(),
+        cards: deck.cards || []
+      }));
+
+      console.log("Processed public decks:", {
+        count: publicDecks.length,
+        decks: publicDecks.map((d) => ({ 
+          id: d.id, 
+          title: d.title,
+          isPublic: d.isPublic,
+          cards: d.cards.length
+        }))
+      });
+
+      return publicDecks;
+    } catch (error) {
+      console.error("Detailed fetch error:", error);
+      throw error;
     }
-
-    return response.json();
   },
 
   async getDeck(id: string): Promise<Deck> {
@@ -48,12 +74,30 @@ export const deckService = {
     return data;
   },
 
-  async getPublicDecks(): Promise<Deck[]> {
-    const baseUrl = getBaseUrl();
-    const response = await fetch(`${baseUrl}/public`);
+  async createDeck(title: string): Promise<Deck> {
+    const token = await authService.getToken();
 
-    console.log("Fetching public decks from:", `${baseUrl}/public`);
-    if (!response.ok) throw new Error("Failed to fetch public decks");
+    if (!token) throw new Error("No auth token available");
+
+    const response = await fetch(`${env.api.baseUrl}/create`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${token}`,
+      },
+      body: JSON.stringify({ title }),
+    });
+
+    if (!response.ok) {
+      const error = await response.text();
+
+      console.error("Create deck error:", {
+        status: response.status,
+        statusText: response.statusText,
+        error,
+      });
+      throw new Error(`Failed to create deck: ${error}`);
+    }
 
     return response.json();
   },
@@ -61,70 +105,69 @@ export const deckService = {
   async getUserDecks(): Promise<Deck[]> {
     const token = await authService.getToken();
 
-    console.log("Getting user decks with token:", !!token);
-
     if (!token) {
-      console.log("No auth token available");
+      console.log("No auth token available, skipping user decks fetch");
 
       return [];
     }
 
-    const baseUrl = getBaseUrl();
-    const url = `${baseUrl}/user-decks`;
+    console.log("Fetching user decks...");
+    const response = await fetch(`${env.api.baseUrl}/user-decks`, {
+      headers: {
+        Authorization: `Bearer ${token}`,
+      },
+    });
 
-    console.log("Fetching user decks from:", url);
+    console.log("User decks response:", {
+      status: response.status,
+      ok: response.ok,
+      statusText: response.statusText,
+    });
 
-    try {
-      const response = await fetch(url, {
-        method: "GET",
-        headers: {
-          Authorization: `Bearer ${token}`,
-          "Content-Type": "application/json",
-        },
-      });
-
-      console.log("User decks response:", {
-        url,
-        status: response.status,
-        ok: response.ok,
-        headers: Object.fromEntries(response.headers.entries()),
-        statusText: response.statusText,
-      });
-
-      if (!response.ok) {
-        const errorText = await response.text();
-
-        console.error("API Error:", errorText);
-
-        return [];
-      }
-
-      const data = await response.json();
-
-      console.log("User decks data:", data);
-
-      return data;
-    } catch (error) {
-      console.error("Failed to fetch user decks:", error);
-
-      return [];
+    if (!response.ok) {
+      console.error(
+        "Failed to fetch user decks:",
+        response.status,
+        response.statusText,
+      );
+      throw new Error("Failed to fetch user decks");
     }
+
+    const decks = await response.json();
+
+    console.log("Received user decks:", {
+      count: decks.length,
+      decks: decks.map((d: Deck) => ({ id: d.id, title: d.title })),
+    });
+
+    return decks;
   },
 
-  async syncLocalDecks(decks: Deck[]): Promise<void> {
+  async syncDeck(deck: Deck): Promise<Deck> {
     const token = await authService.getToken();
-
     if (!token) throw new Error("No auth token available");
 
+    console.log("Syncing deck:", { id: deck.id, title: deck.title });
     const response = await fetch(`${env.api.baseUrl}/sync`, {
       method: "POST",
       headers: {
-        Authorization: `Bearer ${token}`,
         "Content-Type": "application/json",
+        Authorization: `Bearer ${token}`,
       },
-      body: JSON.stringify({ decks }),
+      body: JSON.stringify(deck),
     });
 
-    if (!response.ok) throw new Error("Failed to sync local decks");
+    if (!response.ok) {
+      const error = await response.text();
+
+      console.error("Sync deck error:", {
+        status: response.status,
+        statusText: response.statusText,
+        error,
+      });
+      throw new Error(`Failed to sync deck: ${error}`);
+    }
+
+    return response.json();
   },
 };
