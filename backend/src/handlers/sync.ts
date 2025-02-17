@@ -24,6 +24,7 @@ interface SyncPayload {
     }>;
     lastModified: number;
     isPublic: boolean;
+    createdAt?: number; // Added optional property
   };
 }
 
@@ -102,24 +103,6 @@ export const syncDeck = async (
         cardCount: deck.cards.length,
       });
 
-      const existingDeck = deck.id
-        ? await dynamodb.get({
-            TableName: TABLE_NAME,
-            Key: {
-              id: deck.id,
-              userId: payload.sub,
-            },
-          })
-        : null;
-
-      if (deck.id) {
-        console.log(`[${requestId}] Fetching existing deck: ${deck.id}`);
-        console.log(
-          `[${requestId}] Existing deck found:`,
-          existingDeck?.Item || "null",
-        );
-      }
-
       const deckId = deck.id || Date.now().toString();
 
       console.log(`[${requestId}] Using deck ID: ${deckId}`);
@@ -129,7 +112,7 @@ export const syncDeck = async (
         id: deckId,
         userId: payload.sub,
         lastModified: Date.now(),
-        createdAt: existingDeck?.Item?.createdAt || Date.now(),
+        createdAt: deck.createdAt || Date.now(), // Ensure createdAt is always set
       };
 
       console.log(`[${requestId}] Attempting to save deck to DynamoDB`, {
@@ -142,17 +125,6 @@ export const syncDeck = async (
         TableName: TABLE_NAME,
         Item: finalDeck,
       };
-
-      // Only add condition for existing decks and when lastModified is provided
-      if (existingDeck && deck.lastModified) {
-        Object.assign(putParams, {
-          ConditionExpression:
-            "attribute_not_exists(id) OR lastModified <= :lastMod",
-          ExpressionAttributeValues: {
-            ":lastMod": deck.lastModified,
-          },
-        });
-      }
 
       await dynamodb.put(putParams);
 

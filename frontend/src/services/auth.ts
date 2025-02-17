@@ -75,6 +75,18 @@ export const authService = {
     return getCurrentUser();
   },
 
+  async getSession() {
+    try {
+      const session = await fetchAuthSession();
+
+      return session;
+    } catch (error) {
+      console.error("Failed to get session:", error);
+
+      return null;
+    }
+  },
+
   async getToken(): Promise<string | null> {
     try {
       const session = await fetchAuthSession();

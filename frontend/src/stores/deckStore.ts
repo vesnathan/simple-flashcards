@@ -20,7 +20,7 @@ interface DeckStore {
   localDecks: Deck[];
   addCard: (question: string, answer: string) => void;
   addLocalDeck: (deck: Deck) => void;
-  loadUserDecks: (userId: string) => Promise<void>;
+  loadUserDecks: () => Promise<void>; // Remove userId parameter
   clearUserDecks: () => void;
 }
 
@@ -182,16 +182,31 @@ export const useDeckStore = create<DeckStore>((set) => ({
       currentlySelectedDeck: deck,
     });
   },
-  loadUserDecks: async (userId: string) => {
+  loadUserDecks: async () => {
     try {
-      const decks = await deckService.getUserDecks(userId);
+      const [publicDecks, userDecks] = await Promise.all([
+        deckService.getPublicDecks(),
+        deckService.getUserDecks().catch(() => []) // Handle failure gracefully
+      ]);
+
+      console.log('Loaded decks:', {
+        public: publicDecks.length,
+        user: userDecks.length
+      });
+
+      // Combine and deduplicate by ID
+      const allDecks = [...publicDecks, ...userDecks];
+      const uniqueDecks = allDecks.reduce((acc, deck) => {
+        acc[deck.id] = deck;
+        return acc;
+      }, {} as Record<string, Deck>);
 
       set((state) => ({
         ...state,
-        decks: decks,
+        decks: Object.values(uniqueDecks)
       }));
     } catch (error) {
-      console.error("Failed to load user decks:", error);
+      console.error("Failed to load decks:", error);
       throw error;
     }
   },

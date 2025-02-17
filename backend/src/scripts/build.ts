@@ -25,28 +25,29 @@ async function zipDirectory(sourcePath: string, outPath: string) {
 
 async function build() {
   const distPath = join(__dirname, "../../dist");
-  const handlerPath = join(distPath, "handlers");
 
   await rm(distPath, { recursive: true, force: true });
   await mkdir(distPath);
-  await mkdir(handlerPath);
 
-  // Bundle handlers
+  // Bundle handlers with corrected build config
   await esbuild.build({
     entryPoints: [
       join(__dirname, "../handlers/sync.ts"),
       join(__dirname, "../handlers/decks.ts"),
+      join(__dirname, "../handlers/userDecks.ts"), // Add new handler
     ],
     bundle: true,
     minify: true,
     platform: "node",
     target: "node18",
-    outdir: handlerPath,
+    outdir: distPath,
     format: "cjs",
+    outExtension: { ".js": ".js" }, // Fixed: Use .js extension
+    external: ["aws-sdk"], // Exclude AWS SDK from bundle
   });
 
   // Create ZIP
-  await zipDirectory(handlerPath, join(distPath, "functions.zip"));
+  await zipDirectory(distPath, join(distPath, "functions.zip"));
 }
 
 build().catch((error) => {

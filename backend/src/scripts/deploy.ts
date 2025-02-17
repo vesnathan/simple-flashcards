@@ -22,6 +22,9 @@ import {
   UpdateStageCommand,
   PutMethodResponseCommand,
   PutIntegrationResponseCommand,
+  DeleteRestApiCommand,
+  CreateStageCommand,
+  DeleteStageCommand,
 } from "@aws-sdk/client-api-gateway";
 import {
   CloudWatchLogsClient,
@@ -32,6 +35,7 @@ import { dynamodbService } from "../services/dynamodb";
 import { iamService } from "../services/iam";
 import { CONFIG } from "../config/aws";
 import { cognitoService } from "../services/cognito";
+import { seedDatabase } from "../utils/dbSeed";
 
 const lambda = new LambdaClient({
   region: "ap-southeast-2",
@@ -51,6 +55,11 @@ interface AuthConfig {
   clientId: string | undefined;
 }
 
+interface ApiGatewayResource {
+  id: string;
+  restApiId: string;
+}
+
 async function deployLambda(authConfig: AuthConfig) {
   console.log("Creating IAM role...");
   const roleArn = await iamService.createLambdaRole();
@@ -62,9 +71,10 @@ async function deployLambda(authConfig: AuthConfig) {
   console.log("Created role:", roleArn);
   const zipFile = readFileSync(join(__dirname, "../../dist/functions.zip"));
 
-  // Deploy main function
+  // Declare all function names at the start
   const getFunctionName = `flashcards-${CONFIG.STAGE}-getDecks`;
   const syncFunctionName = `flashcards-${CONFIG.STAGE}-syncDeck`;
+  const userDecksFunctionName = `flashcards-${CONFIG.STAGE}-userDecks`;
 
   const environmentVariables = {
     DECKS_TABLE: CONFIG.DECKS_TABLE,
@@ -76,12 +86,12 @@ async function deployLambda(authConfig: AuthConfig) {
   } as Record<string, string>;
 
   try {
-    // Create/update get function
+    // Create/update get function with correct handler path
     await lambda.send(
       new CreateFunctionCommand({
         FunctionName: getFunctionName,
         Runtime: "nodejs18.x",
-        Handler: "handlers/decks.getDecks", // Fix handler path
+        Handler: "decks.handler", // Changed from handlers/decks.handler
         Role: roleArn,
         Code: { ZipFile: zipFile },
         Environment: {
@@ -90,12 +100,24 @@ async function deployLambda(authConfig: AuthConfig) {
       }),
     );
 
-    // Create/update sync function
+    // Deploy user-decks function
+    await lambda.send(
+      new CreateFunctionCommand({
+        FunctionName: userDecksFunctionName,
+        Runtime: "nodejs18.x",
+        Handler: "userDecks.handler",
+        Role: roleArn,
+        Code: { ZipFile: zipFile },
+        Environment: { Variables: environmentVariables },
+      }),
+    );
+
+    // Create/update sync function with correct handler path
     await lambda.send(
       new CreateFunctionCommand({
         FunctionName: syncFunctionName,
         Runtime: "nodejs18.x",
-        Handler: "handlers/sync.syncDeck", // Fix handler path
+        Handler: "sync.syncDeck", // Changed from handlers/sync.syncDeck
         Role: roleArn,
         Code: { ZipFile: zipFile },
         Environment: {
@@ -108,6 +130,7 @@ async function deployLambda(authConfig: AuthConfig) {
 
     return {
       getFunctionArn: `arn:aws:lambda:${CONFIG.REGION}:${CONFIG.ACCOUNT_ID}:function:${getFunctionName}`,
+      userDecksFunctionArn: `arn:aws:lambda:${CONFIG.REGION}:${CONFIG.ACCOUNT_ID}:function:${userDecksFunctionName}`,
       syncFunctionArn: `arn:aws:lambda:${CONFIG.REGION}:${CONFIG.ACCOUNT_ID}:function:${syncFunctionName}`,
     };
   } catch (error: any) {
@@ -123,6 +146,7 @@ async function deployLambda(authConfig: AuthConfig) {
 
       return {
         getFunctionArn: `arn:aws:lambda:${CONFIG.REGION}:${CONFIG.ACCOUNT_ID}:function:${getFunctionName}`,
+        userDecksFunctionArn: `arn:aws:lambda:${CONFIG.REGION}:${CONFIG.ACCOUNT_ID}:function:${userDecksFunctionName}`,
         syncFunctionArn: `arn:aws:lambda:${CONFIG.REGION}:${CONFIG.ACCOUNT_ID}:function:${syncFunctionName}`,
       };
     } else {
@@ -140,154 +164,262 @@ async function findExistingApi(): Promise<string | undefined> {
   return existingApi?.id;
 }
 
+async function waitForApiDeletion(existingApiId: string) {
+  console.log("Waiting for API Gateway deletion to complete...");
+  let retries = 0;
+  const maxRetries = 30; // Increased from 20 to 30
+
+  while (retries < maxRetries) {
+    try {
+      // Check if API still exists
+      const apis = await apiGateway.send(
+        new GetRestApisCommand({
+          limit: 100,
+        }),
+      );
+
+      const existingApi = apis.items?.find((api) => api.id === existingApiId);
+
+      if (!existingApi) {
+        console.log(
+          "API Gateway deleted, waiting for resources to clean up...",
+        );
+        await new Promise((resolve) => setTimeout(resolve, 30000)); // Reduced from 60s to 30s
+
+        return;
+      }
+
+      // Check if resources are still being deleted
+      try {
+        await apiGateway.send(
+          new GetResourcesCommand({
+            restApiId: existingApiId,
+          }),
+        );
+        // If we can still get resources, they're not deleted yet
+        console.log("Resources still exist, waiting...");
+      } catch (resourceError: any) {
+        if (resourceError.name === "NotFoundException") {
+          console.log("All resources deleted successfully");
+          // Wait additional time after resources are gone
+          await new Promise((resolve) => setTimeout(resolve, 30000));
+
+          return;
+        }
+      }
+    } catch (error) {
+      console.log("Error checking API/resource status:", error);
+    }
+
+    console.log(
+      `Waiting for deletion (attempt ${retries + 1}/${maxRetries})...`,
+    );
+    await new Promise((resolve) => setTimeout(resolve, 10000)); // Reduced from 20s to 10s
+    retries++;
+  }
+
+  throw new Error("Timed out waiting for API Gateway deletion");
+}
+
+async function createApiResources(
+  api: { id: string },
+  rootResourceId: string,
+): Promise<Record<string, ApiGatewayResource>> {
+  // First create all resources
+  const resources = {
+    decks: await apiGateway.send(
+      new CreateResourceCommand({
+        restApiId: api.id,
+        parentId: rootResourceId,
+        pathPart: "decks",
+      }),
+    ),
+    public: await apiGateway.send(
+      new CreateResourceCommand({
+        restApiId: api.id,
+        parentId: rootResourceId,
+        pathPart: "public",
+      }),
+    ),
+    userDecks: await apiGateway.send(
+      new CreateResourceCommand({
+        restApiId: api.id,
+        parentId: rootResourceId,
+        pathPart: "user-decks",
+      }),
+    ),
+    proxy: await apiGateway.send(
+      new CreateResourceCommand({
+        restApiId: api.id,
+        parentId: rootResourceId,
+        pathPart: "{proxy+}",
+      }),
+    ),
+  };
+
+  // Type check and transform responses
+  const validatedResources: Record<string, ApiGatewayResource> = {};
+
+  for (const [key, resource] of Object.entries(resources)) {
+    if (!resource.id) {
+      throw new Error(`Failed to create ${key} resource - no ID returned`);
+    }
+    validatedResources[key] = {
+      id: resource.id,
+      restApiId: api.id,
+    };
+  }
+
+  // Add a delay after creating resources
+  await new Promise((resolve) => setTimeout(resolve, 2000)); // Reduced from 5s to 2s
+
+  return validatedResources;
+}
+
 async function deployAPI(
   functionArn: string,
+  userDecksFunctionArn: string,
   syncFunctionArn: string,
 ): Promise<string> {
-  console.log("Checking for existing API...");
+  console.log("Starting API Gateway deployment...");
+
+  // Find and delete existing API
   const existingApiId = await findExistingApi();
 
   if (existingApiId) {
-    console.log("Found existing API, reusing API ID:", existingApiId);
+    console.log("Found existing API, deleting...");
+    try {
+      await apiGateway.send(
+        new DeleteRestApiCommand({ restApiId: existingApiId }),
+      );
+      await waitForApiDeletion(existingApiId);
 
-    return existingApiId;
+      // Add extra safety delay after deletion
+      console.log("Adding extra delay for AWS to clean up resources...");
+      await new Promise((resolve) => setTimeout(resolve, 60000)); // 1 minute
+    } catch (error) {
+      console.error("Error deleting existing API:", error);
+      throw error;
+    }
   }
+
+  // Add delay before creating new API
+  console.log("Waiting before creating new API...");
+  await new Promise((resolve) => setTimeout(resolve, 30000));
 
   console.log("Creating new API Gateway...");
-  const api = await apiGateway.send(
-    new CreateRestApiCommand({
-      name: `flashcards-${CONFIG.STAGE}-api`,
-      description: "Flashcards API",
-    }),
-  );
-
-  if (!api.id) {
-    throw new Error("Failed to create API Gateway - no API ID returned");
-  }
-
-  // Get root resource id
-  const resources = await apiGateway.send(
-    new GetResourcesCommand({
-      restApiId: api.id,
-    }),
-  );
-  const rootResourceId = resources.items?.[0].id;
-
-  // Create /decks resource
-  const resource = await apiGateway.send(
-    new CreateResourceCommand({
-      restApiId: api.id,
-      parentId: rootResourceId,
-      pathPart: "decks",
-    }),
-  );
-
   try {
-    // Add OPTIONS method with mock integration
-    await apiGateway.send(
-      new PutMethodCommand({
-        restApiId: api.id,
-        resourceId: resource.id,
-        httpMethod: "OPTIONS",
-        authorizationType: "NONE",
-        apiKeyRequired: false,
+    const apiResponse = await apiGateway.send(
+      new CreateRestApiCommand({
+        name: `flashcards-${CONFIG.STAGE}-api`,
+        description: "Flashcards API",
       }),
     );
 
-    // Configure mock integration for OPTIONS
-    await apiGateway.send(
-      new PutIntegrationCommand({
+    if (!apiResponse.id) {
+      throw new Error("Failed to create API Gateway - no API ID returned");
+    }
+
+    const api = { id: apiResponse.id };
+
+    // Add delay after API creation
+    await new Promise((resolve) => setTimeout(resolve, 10000));
+
+    // Get root resource id with type checking
+    const resources = await apiGateway.send(
+      new GetResourcesCommand({
         restApiId: api.id,
-        resourceId: resource.id,
-        httpMethod: "OPTIONS",
-        type: "MOCK",
-        requestTemplates: {
-          "application/json": '{ "statusCode": 200 }',
-        },
       }),
     );
 
-    // Add method response for OPTIONS
-    await apiGateway.send(
-      new PutMethodResponseCommand({
-        restApiId: api.id,
-        resourceId: resource.id,
-        httpMethod: "OPTIONS",
-        statusCode: "200",
-        responseParameters: {
-          "method.response.header.Access-Control-Allow-Origin": true,
-          "method.response.header.Access-Control-Allow-Methods": true,
-          "method.response.header.Access-Control-Allow-Headers": true,
-        },
-      }),
+    const rootResourceId = resources.items?.[0]?.id;
+
+    if (!rootResourceId) {
+      throw new Error("Failed to get root resource ID");
+    }
+
+    // Create all resources first
+    console.log("Creating API resources...");
+    const apiResources = await createApiResources(api, rootResourceId);
+
+    // Add delay before adding methods
+    console.log("Waiting before adding methods...");
+    await new Promise((resolve) => setTimeout(resolve, 5000));
+
+    // Now add methods to each resource
+    console.log("Adding methods to resources...");
+
+    // Add methods to /decks
+    await addResourceMethods(api.id, apiResources.decks.id, functionArn, [
+      "GET",
+      "OPTIONS",
+    ]);
+
+    // Add sync endpoint
+    await addResourceMethods(api.id, apiResources.decks.id, syncFunctionArn, [
+      "POST",
+    ]);
+
+    // Add methods to /public
+    await addResourceMethods(api.id, apiResources.public.id, functionArn, [
+      "GET",
+      "OPTIONS",
+    ]);
+
+    // Add methods to /user-decks
+    await addResourceMethods(
+      api.id,
+      apiResources.userDecks.id,
+      userDecksFunctionArn,
+      ["GET", "OPTIONS"],
     );
 
-    // Add integration response for OPTIONS
-    await apiGateway.send(
-      new PutIntegrationResponseCommand({
-        restApiId: api.id,
-        resourceId: resource.id,
-        httpMethod: "OPTIONS",
-        statusCode: "200",
-        responseParameters: {
-          "method.response.header.Access-Control-Allow-Origin": "'*'",
-          "method.response.header.Access-Control-Allow-Methods":
-            "'GET,POST,OPTIONS'",
-          "method.response.header.Access-Control-Allow-Headers":
-            "'Content-Type,X-Amz-Date,Authorization,X-Api-Key,X-Amz-Security-Token'",
-        },
-      }),
-    );
+    // Add methods to proxy resource
+    await addProxyMethods(api.id, apiResources.proxy.id, userDecksFunctionArn);
 
-    // Add GET method with proxy integration
-    await apiGateway.send(
-      new PutMethodCommand({
-        restApiId: api.id,
-        resourceId: resource.id,
-        httpMethod: "GET",
-        authorizationType: "NONE",
-        apiKeyRequired: false,
-      }),
-    );
-
-    await apiGateway.send(
-      new PutIntegrationCommand({
-        restApiId: api.id,
-        resourceId: resource.id,
-        httpMethod: "GET",
-        type: "AWS_PROXY",
-        integrationHttpMethod: "POST",
-        uri: `arn:aws:apigateway:${CONFIG.REGION}:lambda:path/2015-03-31/functions/${functionArn}/invocations`,
-      }),
-    );
-
-    // Add POST method with proxy integration
-    await apiGateway.send(
-      new PutMethodCommand({
-        restApiId: api.id,
-        resourceId: resource.id,
-        httpMethod: "POST",
-        authorizationType: "NONE",
-        apiKeyRequired: false,
-      }),
-    );
-
-    await apiGateway.send(
-      new PutIntegrationCommand({
-        restApiId: api.id,
-        resourceId: resource.id,
-        httpMethod: "POST",
-        type: "AWS_PROXY",
-        integrationHttpMethod: "POST",
-        uri: `arn:aws:apigateway:${CONFIG.REGION}:lambda:path/2015-03-31/functions/${syncFunctionArn}/invocations`,
-      }),
-    );
-
-    // Create deployment
-    await apiGateway.send(
+    // Create deployment without stage name
+    console.log("Creating new deployment...");
+    const deployment = await apiGateway.send(
       new CreateDeploymentCommand({
         restApiId: api.id,
+        description: `Deployment for ${CONFIG.STAGE}`,
+      }),
+    );
+
+    if (!deployment.id) {
+      throw new Error("Failed to create deployment - no ID returned");
+    }
+
+    // Add delay after deployment
+    await new Promise((resolve) => setTimeout(resolve, 10000));
+
+    // Delete existing stage if it exists
+    try {
+      console.log(`Attempting to delete existing stage: ${CONFIG.STAGE}`);
+      await apiGateway.send(
+        new DeleteStageCommand({
+          restApiId: api.id,
+          stageName: CONFIG.STAGE,
+        }),
+      );
+      // Add delay after deletion
+      await new Promise((resolve) => setTimeout(resolve, 10000));
+    } catch (error: any) {
+      if (error.name !== "NotFoundException") {
+        console.log("Stage deletion result:", error.name);
+      }
+    }
+
+    // Create new stage
+    console.log("Creating new stage...");
+    await apiGateway.send(
+      new CreateStageCommand({
+        restApiId: api.id,
         stageName: CONFIG.STAGE,
+        deploymentId: deployment.id,
+        variables: {
+          stage: CONFIG.STAGE,
+        },
       }),
     );
 
@@ -299,6 +431,144 @@ async function deployAPI(
     console.error("Failed to create API Gateway resources:", error);
     throw error;
   }
+}
+
+async function addResourceMethods(
+  apiId: string,
+  resourceId: string,
+  functionArn: string,
+  methods: string[],
+) {
+  for (const method of methods) {
+    if (method === "OPTIONS") {
+      await addOptionsMethod(apiId, resourceId);
+    } else {
+      await addProxyMethod(apiId, resourceId, method, functionArn);
+    }
+    // Add small delay between methods
+    await new Promise((resolve) => setTimeout(resolve, 1000));
+  }
+}
+
+async function addOptionsMethod(apiId: string, resourceId: string) {
+  await apiGateway.send(
+    new PutMethodCommand({
+      restApiId: apiId,
+      resourceId: resourceId,
+      httpMethod: "OPTIONS",
+      authorizationType: "NONE",
+      apiKeyRequired: false,
+    }),
+  );
+
+  await apiGateway.send(
+    new PutIntegrationCommand({
+      restApiId: apiId,
+      resourceId: resourceId,
+      httpMethod: "OPTIONS",
+      type: "MOCK",
+      requestTemplates: {
+        "application/json": '{ "statusCode": 200 }',
+      },
+    }),
+  );
+
+  await apiGateway.send(
+    new PutMethodResponseCommand({
+      restApiId: apiId,
+      resourceId: resourceId,
+      httpMethod: "OPTIONS",
+      statusCode: "200",
+      responseParameters: {
+        "method.response.header.Access-Control-Allow-Origin": true,
+        "method.response.header.Access-Control-Allow-Methods": true,
+        "method.response.header.Access-Control-Allow-Headers": true,
+      },
+    }),
+  );
+
+  await apiGateway.send(
+    new PutIntegrationResponseCommand({
+      restApiId: apiId,
+      resourceId: resourceId,
+      httpMethod: "OPTIONS",
+      statusCode: "200",
+      responseParameters: {
+        "method.response.header.Access-Control-Allow-Origin": "'*'",
+        "method.response.header.Access-Control-Allow-Methods":
+          "'GET,POST,OPTIONS'",
+        "method.response.header.Access-Control-Allow-Headers":
+          "'Content-Type,X-Amz-Date,Authorization,X-Api-Key,X-Amz-Security-Token'",
+      },
+    }),
+  );
+}
+
+async function addProxyMethod(
+  apiId: string,
+  resourceId: string,
+  method: string,
+  functionArn: string,
+) {
+  await apiGateway.send(
+    new PutMethodCommand({
+      restApiId: apiId,
+      resourceId: resourceId,
+      httpMethod: method,
+      authorizationType: "NONE",
+      apiKeyRequired: false,
+    }),
+  );
+
+  await apiGateway.send(
+    new PutIntegrationCommand({
+      restApiId: apiId,
+      resourceId: resourceId,
+      httpMethod: method,
+      type: "AWS_PROXY",
+      integrationHttpMethod: "POST",
+      uri: `arn:aws:apigateway:${CONFIG.REGION}:lambda:path/2015-03-31/functions/${functionArn}/invocations`,
+    }),
+  );
+}
+
+async function addProxyMethods(
+  apiId: string,
+  resourceId: string,
+  functionArn: string,
+) {
+  await addOptionsMethod(apiId, resourceId);
+
+  // Add ANY method
+  await apiGateway.send(
+    new PutMethodCommand({
+      restApiId: apiId,
+      resourceId: resourceId,
+      httpMethod: "ANY",
+      authorizationType: "NONE",
+      apiKeyRequired: false,
+      requestParameters: {
+        "method.request.path.proxy": true, // Add this line
+      },
+    }),
+  );
+
+  // Update integration with correct parameter mapping
+  await apiGateway.send(
+    new PutIntegrationCommand({
+      restApiId: apiId,
+      resourceId: resourceId,
+      httpMethod: "ANY",
+      type: "AWS_PROXY",
+      integrationHttpMethod: "POST",
+      uri: `arn:aws:apigateway:${CONFIG.REGION}:lambda:path/2015-03-31/functions/${functionArn}/invocations`,
+      passthroughBehavior: "WHEN_NO_MATCH",
+      requestParameters: {
+        "integration.request.path.proxy": "method.request.path.proxy",
+      },
+      timeoutInMillis: 29000, // Add timeout
+    }),
+  );
 }
 
 async function enableApiGatewayLogging(apiId: string) {
@@ -396,6 +666,7 @@ async function writeEnvFile(apiId: string, authConfig: AuthConfig) {
 
   const envContent = `
 NEXT_PUBLIC_API_URL=https://${apiId}.execute-api.${CONFIG.REGION}.amazonaws.com/${CONFIG.STAGE}/decks
+NEXT_PUBLIC_API_STAGE=${CONFIG.STAGE}
 NEXT_PUBLIC_COGNITO_USER_POOL_ID=${authConfig.userPoolId}
 NEXT_PUBLIC_COGNITO_CLIENT_ID=${authConfig.clientId}
 NEXT_PUBLIC_COGNITO_REGION=${CONFIG.REGION}
@@ -418,6 +689,7 @@ async function updateExistingFunctions(
 ) {
   const getFunctionName = `flashcards-${CONFIG.STAGE}-getDecks`;
   const syncFunctionName = `flashcards-${CONFIG.STAGE}-syncDeck`;
+  const userDecksFunctionName = `flashcards-${CONFIG.STAGE}-userDecks`;
 
   const environmentVariables = {
     DECKS_TABLE: CONFIG.DECKS_TABLE,
@@ -428,8 +700,12 @@ async function updateExistingFunctions(
     COGNITO_CLIENT_ID: authConfig.clientId || "",
   } as Record<string, string>;
 
-  // Update both functions
-  for (const functionName of [getFunctionName, syncFunctionName]) {
+  // Update all functions
+  for (const functionName of [
+    getFunctionName,
+    syncFunctionName,
+    userDecksFunctionName,
+  ]) {
     console.log(`Updating function: ${functionName}`);
 
     try {
@@ -456,6 +732,24 @@ async function updateExistingFunctions(
         console.log(`Skipping ${functionName} - update already in progress`);
         continue;
       }
+      if (error.name === "ResourceNotFoundException") {
+        console.log(`Creating new function: ${functionName}`);
+        await lambda.send(
+          new CreateFunctionCommand({
+            FunctionName: functionName,
+            Runtime: "nodejs18.x",
+            Handler: functionName.includes("userDecks")
+              ? "userDecks.handler"
+              : functionName.includes("sync")
+                ? "sync.syncDeck"
+                : "decks.handler",
+            Role: await iamService.createLambdaRole(),
+            Code: { ZipFile: zipFile },
+            Environment: { Variables: environmentVariables },
+          }),
+        );
+        continue;
+      }
       console.error(`Failed to update ${functionName}:`, error);
       throw error;
     }
@@ -479,27 +773,48 @@ async function deploy() {
     }
 
     // Deploy Lambda and get ARNs
-    const { getFunctionArn, syncFunctionArn } = await deployLambda(authConfig);
+    const { getFunctionArn, userDecksFunctionArn, syncFunctionArn } =
+      await deployLambda(authConfig);
 
-    // Deploy API Gateway with both function integrations
-    const apiId = await deployAPI(getFunctionArn, syncFunctionArn);
+    // Deploy API Gateway with function integrations
+    const apiId = await deployAPI(
+      getFunctionArn,
+      userDecksFunctionArn,
+      syncFunctionArn,
+    );
 
     if (!apiId) throw new Error("Failed to get API ID");
 
-    // Write all config to frontend .env
+    // Write frontend config
     await writeEnvFile(apiId, authConfig);
 
-    // Add Lambda permissions for both functions
-    const getFunctionName = `flashcards-${CONFIG.STAGE}-getDecks`;
-    const syncFunctionName = `flashcards-${CONFIG.STAGE}-syncDeck`;
-
-    await addLambdaPermission(getFunctionName);
-    await addLambdaPermission(syncFunctionName);
-
-    // Update both Lambda functions with latest code and config
+    // Update Lambda functions with latest code and config
     const zipFile = readFileSync(join(__dirname, "../../dist/functions.zip"));
 
     await updateExistingFunctions(zipFile, authConfig);
+
+    // Function names
+    const getFunctionName = `flashcards-${CONFIG.STAGE}-getDecks`;
+    const syncFunctionName = `flashcards-${CONFIG.STAGE}-syncDeck`;
+    const userDecksFunctionName = `flashcards-${CONFIG.STAGE}-userDecks`;
+
+    // Add Lambda permissions after functions are created/updated
+    console.log("Adding Lambda permissions...");
+    for (const functionName of [
+      getFunctionName,
+      syncFunctionName,
+      userDecksFunctionName,
+    ]) {
+      try {
+        await addLambdaPermission(functionName);
+      } catch (error: any) {
+        console.error(
+          `Failed to add permission for ${functionName}:`,
+          error.message,
+        );
+        // Continue with other functions even if one fails
+      }
+    }
 
     console.log("Deployment successful");
     console.log(
@@ -511,7 +826,7 @@ async function deploy() {
 
     if (tableWasCreated) {
       console.log("New table created, seeding database...");
-      await import("./seed");
+      await seedDatabase();
       console.log("Database seeded successfully");
     }
 

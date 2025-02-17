@@ -1,82 +1,70 @@
+/* eslint-disable no-console */
 "use client";
 
 import { cn } from "@heroui/theme";
 import { Button } from "@heroui/button";
 import { useState, useEffect } from "react";
-import {
-  Modal,
-  ModalContent,
-  ModalHeader,
-  ModalBody,
-  ModalFooter,
-} from "@heroui/modal";
 
-import { Deck } from "../../../../types/deck";
-
-import { useDeckStore } from "@/stores/deckStore"; // Fix import path
+import { generateId } from "@/utils/id";
+import { Deck } from "@/types/deck";
+import { useDeckStore } from "@/stores/deckStore";
 import { useAuthStore } from "@/stores/authStore";
 import { AuthModal } from "@/components/auth/AuthModal";
-import { generateId } from "@/utils/id";
+import { AddDeckModal } from "@/components/decks/AddDeckModal";
 
-interface MainLayoutSidebarProps {
-  decks: Deck[];
-}
-
-export function MainLayoutSidebar({ decks }: MainLayoutSidebarProps) {
-  const {
-    setDeck,
-    currentlySelectedDeck,
-    localDecks,
-    addLocalDeck,
-    loadUserDecks,
-  } = useDeckStore();
+export function MainLayoutSidebar() {
+  const { setDeck, currentlySelectedDeck, localDecks, decks, loadUserDecks } =
+    useDeckStore();
   const [activeCategory, setActiveCategory] = useState<"public" | "private">(
     "private",
   );
   const [showAuthModal, setShowAuthModal] = useState(false);
+  const [showAddDeckModal, setShowAddDeckModal] = useState(false);
   const { user, signOut } = useAuthStore();
-  const [showNewDeckModal, setShowNewDeckModal] = useState(false);
-  const [newDeckTitle, setNewDeckTitle] = useState("");
 
+  // Load public decks on mount
   useEffect(() => {
-    if (user?.userId) {
-      loadUserDecks(user.userId);
-    }
-  }, [user, loadUserDecks]);
+    const loadDecks = async () => {
+      try {
+        await loadUserDecks();
+      } catch (error) {
+        console.error("Failed to load decks:", error);
+      }
+    };
 
-  const privateDecks =
+    loadDecks();
+  }, [loadUserDecks]);
+
+  // Update deck filtering logic to correctly show public decks
+  const visibleDecks =
     activeCategory === "private"
-      ? [
-          // Include decks where user is the owner
-          ...decks.filter((deck) => deck.userId === user?.userId),
-          // Include local decks
-          ...localDecks,
-        ]
-      : decks.filter((deck) => deck.isPublic || deck.userId === "system");
+      ? [...localDecks, ...decks.filter((d) => !d.isPublic)]
+      : decks.filter((d) => d.isPublic === true); // Explicitly check for true
+
+  // Add logging to debug deck visibility
+  console.log("Decks state:", {
+    localDecks: localDecks.length,
+    allDecks: decks.length,
+    visibleDecks: visibleDecks.length,
+    activeCategory,
+    publicDecks: decks.filter((d) => d.isPublic === true).length,
+  });
 
   const handleDeckSelect = (deck: Deck) => {
     setDeck(deck);
   };
 
-  const handleAddDeck = () => {
-    setShowNewDeckModal(true);
-  };
-
-  const handleCreateDeck = () => {
-    if (!newDeckTitle.trim()) return;
-
+  const handleAddDeck = (title: string) => {
     const newDeck: Deck = {
       id: generateId(),
-      title: newDeckTitle.trim(),
+      title,
       cards: [],
       isLocal: true,
       lastModified: Date.now(),
-      isPublic: false,
+      syncStatus: "local",
     };
 
-    addLocalDeck(newDeck);
-    setNewDeckTitle("");
-    setShowNewDeckModal(false);
+    useDeckStore.getState().addLocalDeck(newDeck);
   };
 
   return (
@@ -121,7 +109,7 @@ export function MainLayoutSidebar({ decks }: MainLayoutSidebarProps) {
       </div>
 
       <div className={cn("flex flex-col w-full", "overflow-y-auto", "py-2")}>
-        {privateDecks.map((deck) => (
+        {visibleDecks.map((deck) => (
           <Button
             key={deck.id || deck.title}
             className={cn(
@@ -169,7 +157,7 @@ export function MainLayoutSidebar({ decks }: MainLayoutSidebarProps) {
       <div className="absolute bottom-0 left-0 right-0 p-4 border-t border-neutral-200 bg-white space-y-2">
         <Button
           className="w-full bg-primary-600 hover:bg-primary-700 text-white"
-          onPress={handleAddDeck}
+          onPress={() => setShowAddDeckModal(true)}
         >
           Add Deck
         </Button>
@@ -190,55 +178,14 @@ export function MainLayoutSidebar({ decks }: MainLayoutSidebarProps) {
         )}
       </div>
 
-      <Modal
-        isOpen={showNewDeckModal}
-        onClose={() => setShowNewDeckModal(false)}
-      >
-        <ModalContent>
-          <ModalHeader className="border-b border-neutral-200 p-4">
-            <h2 className="text-xl font-semibold">Create New Deck</h2>
-          </ModalHeader>
-          <ModalBody className="p-6 space-y-4">
-            <div className="space-y-2">
-              <label
-                className="text-sm font-medium text-neutral-700"
-                htmlFor="deckTitle"
-              >
-                Deck Title
-              </label>
-              <input
-                className="w-full p-2 border border-neutral-300 rounded-md focus:ring-2 focus:ring-primary-500 focus:border-primary-500"
-                id="deckTitle"
-                placeholder="Enter deck title"
-                type="text"
-                value={newDeckTitle}
-                onChange={(e) => setNewDeckTitle(e.target.value)}
-              />
-            </div>
-          </ModalBody>
-          <ModalFooter className="border-t border-neutral-200 p-4">
-            <div className="flex justify-end gap-3">
-              <Button
-                variant="bordered"
-                onPress={() => setShowNewDeckModal(false)}
-              >
-                Cancel
-              </Button>
-              <Button
-                className="bg-primary-600 hover:bg-primary-700 text-white"
-                isDisabled={!newDeckTitle.trim()}
-                onPress={handleCreateDeck}
-              >
-                Create Deck
-              </Button>
-            </div>
-          </ModalFooter>
-        </ModalContent>
-      </Modal>
-
       <AuthModal
         isOpen={showAuthModal}
         onClose={() => setShowAuthModal(false)}
+      />
+      <AddDeckModal
+        isOpen={showAddDeckModal}
+        onClose={() => setShowAddDeckModal(false)}
+        onSubmit={handleAddDeck}
       />
     </div>
   );

@@ -42,41 +42,29 @@ export const useAuthStore = create<AuthState>((set) => ({
       await authService.signIn(email, password);
       const currentUser = await authService.getCurrentUser();
 
-      set({ user: currentUser, error: null });
+      // Extract user ID from Cognito user
+      const userId = currentUser.userId || currentUser.username;
+      const user = { ...currentUser, userId };
 
-      try {
-        // Use store functions directly instead of getState
-        await useDeckStore.setState((state) => {
-          return { ...state }; // Trigger update to ensure latest state
-        });
+      set({ user, error: null });
 
-        // Access store state and functions directly
-        await useDeckStore.getState().syncLocalDecks();
-        await useDeckStore.getState().loadUserDecks(currentUser.userId);
+      // Load decks immediately after successful sign in
+      const deckStore = useDeckStore.getState();
 
-        // Only show success message if decks exist
-        const decks = useDeckStore.getState().decks;
+      await Promise.all([
+        deckStore.loadUserDecks(),
+        deckStore.syncLocalDecks(),
+      ]);
 
-        if (decks.length > 0) {
-          set((state) => ({
-            ...state,
-            toastMessage: {
-              message: "Successfully loaded your decks",
-              type: "success",
-            },
-          }));
-        }
-      } catch (error) {
-        console.error("Failed to load decks:", error);
-        set((state) => ({
-          ...state,
-          toastMessage: {
-            message: "Failed to load some decks",
-            type: "error",
-          },
-        }));
-      }
+      set((state) => ({
+        ...state,
+        toastMessage: {
+          message: "Successfully loaded your decks",
+          type: "success",
+        },
+      }));
     } catch (error: any) {
+      console.error("Sign in error:", error);
       set({ error: error.message, user: null });
       throw error;
     }
@@ -95,8 +83,6 @@ export const useAuthStore = create<AuthState>((set) => ({
   signOut: async () => {
     try {
       await authService.signOut();
-      // Use store function directly
-      useDeckStore.getState().clearUserDecks();
       set({ user: null, error: null });
     } catch (error: any) {
       set({ error: error.message });

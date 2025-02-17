@@ -1,11 +1,7 @@
 /* eslint-disable no-console */
 import { DynamoDB } from "@aws-sdk/client-dynamodb";
 import { DynamoDBDocument } from "@aws-sdk/lib-dynamodb";
-import {
-  APIGatewayProxyHandler,
-  APIGatewayProxyEvent,
-  APIGatewayProxyResult,
-} from "aws-lambda";
+import { APIGatewayProxyResult, APIGatewayProxyEvent } from "aws-lambda";
 import { CognitoJwtVerifier } from "aws-jwt-verify";
 
 import { dynamodbService } from "../services/dynamodb";
@@ -51,121 +47,163 @@ const log = {
   },
 };
 
-// Define custom error class
-class LambdaError extends Error {
-  statusCode: number;
-  code?: string;
-
-  constructor(message: string, statusCode: number = 500, code?: string) {
-    super(message);
-    this.name = "LambdaError";
-    this.statusCode = statusCode;
-    this.code = code;
-  }
-}
-
-export const getDecks = async (
+// Update handler to handle both endpoints
+export const handler = async (
   event: APIGatewayProxyEvent,
 ): Promise<APIGatewayProxyResult> => {
-  const requestId = event.requestContext.requestId;
+  console.log("Incoming request:", {
+    path: event.path,
+    method: event.httpMethod,
+    headers: event.headers,
+    pathParameters: event.pathParameters,
+  });
 
-  log.info(`Starting request processing`, { requestId });
+  if (event.httpMethod === "OPTIONS") {
+    return { statusCode: 200, headers: corsHeaders, body: "" };
+  }
 
   try {
-    const auth = event.headers.Authorization || event.headers.authorization;
-    const userId = event.queryStringParameters?.userId;
+    const path = event.path.toLowerCase();
 
-    // If userId is provided, verify auth token
-    if (userId) {
+    console.log("Processing path:", path);
+
+    // Handle /user-decks endpoint
+    if (path.includes("user-decks")) {
+      console.log("Handling user-decks request");
+      const auth = event.headers.Authorization || event.headers.authorization;
+
       if (!auth?.startsWith("Bearer ")) {
-        log.error(`Invalid auth header`, { requestId, auth });
+        console.log("Missing or invalid auth token");
 
         return {
           statusCode: 401,
           headers: corsHeaders,
-          body: JSON.stringify({ message: "Authentication required" }),
+          body: JSON.stringify({ message: "Authorization required" }),
         };
       }
 
-      const token = auth.split(" ")[1];
-
       try {
-        await verifier.verify(token);
-        log.info(`Token verified`, { requestId, userId });
-      } catch (error) {
-        log.error(`Token verification failed`, {
-          requestId,
-          error: error instanceof Error ? error.message : String(error),
+        const token = auth.split(" ")[1];
+        const payload = await verifier.verify(token);
+        const userId = payload.sub;
+
+        console.log("Fetching decks for user:", userId);
+
+        const result = await dynamodb.scan({
+          TableName: TABLE_NAME,
+          FilterExpression: "userId = :userId",
+          ExpressionAttributeValues: { ":userId": userId },
         });
-        throw new LambdaError("Invalid token", 401);
+
+        console.log("Found user decks:", {
+          userId,
+          count: result.Items?.length || 0,
+        });
+
+        return {
+          statusCode: 200,
+          headers: corsHeaders,
+          body: JSON.stringify(result.Items || []),
+        };
+      } catch (error) {
+        console.error("Auth error:", error);
+
+        return {
+          statusCode: 401,
+          headers: corsHeaders,
+          body: JSON.stringify({ message: "Invalid token" }),
+        };
       }
-
-      // Get user's decks
-      log.info(`Fetching user decks`, { requestId, userId });
-      const userDecks = await dynamodb.query({
-        TableName: TABLE_NAME,
-        KeyConditionExpression: "userId = :userId",
-        ExpressionAttributeValues: {
-          ":userId": userId,
-        },
-      });
-
-      return {
-        statusCode: 200,
-        headers: corsHeaders,
-        body: JSON.stringify(userDecks.Items || []),
-      };
     }
 
-    // If no userId, return public decks
-    log.info(`Fetching system decks`, { requestId });
-    const publicDecks = await dynamodb.scan({
-      TableName: TABLE_NAME,
-      FilterExpression: "userId = :systemId",
-      ExpressionAttributeValues: {
-        ":systemId": "system",
-      },
-    });
-
-    return {
-      statusCode: 200,
-      headers: corsHeaders,
-      body: JSON.stringify(publicDecks.Items || []),
-    };
+    // Default to getDecks for other paths
+    return await getDecks(event);
   } catch (error) {
-    if (error instanceof LambdaError) {
-      log.error(`Known error occurred`, {
-        requestId,
-        code: error.code,
-        statusCode: error.statusCode,
-        message: error.message,
-      });
-
-      return {
-        statusCode: error.statusCode || 500,
-        headers: corsHeaders,
-        body: JSON.stringify({ message: error.message }),
-      };
-    }
-
-    log.error(`Unhandled error`, {
-      requestId,
-      error: error instanceof Error ? error.message : String(error),
-    });
+    console.error("Handler error:", error);
 
     return {
       statusCode: 500,
       headers: corsHeaders,
       body: JSON.stringify({
         message: "Internal server error",
-        requestId,
+        error: error instanceof Error ? error.message : String(error),
       }),
     };
   }
 };
 
+export const getDecks = async (
+  event: APIGatewayProxyEvent,
+): Promise<APIGatewayProxyResult> => {
+  const requestId = event.requestContext.requestId;
+  let userId: string | null = null;
+
+  // Try to verify token if provided
+  const auth = event.headers.Authorization || event.headers.authorization;
+
+  if (auth && auth.startsWith("Bearer ")) {
+    const token = auth.split(" ")[1];
+
+    try {
+      const payload = await verifier.verify(token);
+
+      userId = payload.sub;
+    } catch (error) {
+      console.error(`[${requestId}] Token verification failed:`, error);
+      // Proceed without user decks if token invalid
+    }
+  }
+
+  try {
+    // Fetch public decks (system decks)
+    const publicRes = await dynamodb.scan({
+      TableName: TABLE_NAME,
+      FilterExpression: "userId = :system",
+      ExpressionAttributeValues: { ":system": "system" },
+    });
+    const publicDecks = publicRes.Items || [];
+
+    let userDecks: any[] = [];
+
+    if (userId) {
+      // Fetch decks belonging to verified user
+      const userRes = await dynamodb.scan({
+        TableName: TABLE_NAME,
+        FilterExpression: "userId = :userId",
+        ExpressionAttributeValues: { ":userId": userId },
+      });
+
+      userDecks = userRes.Items || [];
+    }
+
+    const mergedDecks = [...publicDecks, ...userDecks];
+
+    console.log(`[${requestId}] Returning decks:`, {
+      public: publicDecks.length,
+      user: userDecks.length,
+      total: mergedDecks.length,
+    });
+
+    return {
+      statusCode: 200,
+      headers: corsHeaders,
+      body: JSON.stringify(mergedDecks),
+    };
+  } catch (error) {
+    console.error(`[${requestId}] Error fetching decks:`, error);
+
+    return {
+      statusCode: 500,
+      headers: corsHeaders,
+      body: JSON.stringify({ message: "Internal server error", requestId }),
+    };
+  }
+};
+
 // Update getDeck handler to use logging too
-export const getDeck: APIGatewayProxyHandler = async (event) => {
+export const getDeck = async (
+  event: APIGatewayProxyEvent,
+): Promise<APIGatewayProxyResult> => {
   const requestId = event.requestContext.requestId;
 
   try {
@@ -209,3 +247,65 @@ export const getDeck: APIGatewayProxyHandler = async (event) => {
     };
   }
 };
+
+export const getUserDecks = async (
+  event: APIGatewayProxyEvent,
+): Promise<APIGatewayProxyResult> => {
+  const requestId = event.requestContext.requestId;
+  const auth = event.headers.Authorization || event.headers.authorization;
+
+  if (!auth?.startsWith("Bearer ")) {
+    return {
+      statusCode: 401,
+      headers: corsHeaders,
+      body: JSON.stringify({ message: "Authorization required" }),
+    };
+  }
+
+  try {
+    // Verify the JWT token
+    const token = auth.split(" ")[1];
+    const payload = await verifier.verify(token);
+    const userId = payload.sub;
+
+    // Query DynamoDB for user's decks
+    const result = await dynamodb.scan({
+      TableName: TABLE_NAME,
+      FilterExpression: "userId = :userId",
+      ExpressionAttributeValues: { ":userId": userId },
+    });
+
+    console.log(`[${requestId}] Retrieved user decks:`, {
+      userId,
+      count: result.Items?.length || 0,
+    });
+
+    return {
+      statusCode: 200,
+      headers: corsHeaders,
+      body: JSON.stringify(result.Items || []),
+    };
+  } catch (error) {
+    console.error(`[${requestId}] Error fetching user decks:`, error);
+
+    // Add type checking for error
+    if (typeof error === "object" && error !== null && "name" in error) {
+      if (error.name === "JWTVerificationFailed") {
+        return {
+          statusCode: 401,
+          headers: corsHeaders,
+          body: JSON.stringify({ message: "Invalid token" }),
+        };
+      }
+    }
+
+    return {
+      statusCode: 500,
+      headers: corsHeaders,
+      body: JSON.stringify({ message: "Failed to fetch user decks" }),
+    };
+  }
+};
+
+// Change export to default for Lambda
+export default handler;

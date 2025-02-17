@@ -11,7 +11,7 @@ export interface Deck {
   isPublic?: boolean;
   isLocal?: boolean;
   userId?: string;
-  createdAt?: string;
+  createdAt?: number; // Made optional to support local decks without createdAt
   syncStatus?: "syncing" | "synced" | "local";
   lastModified: number;
 }
