@@ -17,8 +17,8 @@ export function LocalDeckWarning() {
         </div>
         <div className="ml-3">
           <p className="text-sm text-yellow-700">
-            This deck is stored locally in your browser. Sign in to save it
-            permanently.
+            This deck is stored locally in your browser. If you clear your
+            browser cache it will be lost. Sign in to save it permanently.
           </p>
         </div>
       </div>

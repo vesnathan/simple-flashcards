@@ -12,6 +12,8 @@ import {
   ModalFooter,
 } from "@heroui/modal";
 
+import { LocalDeckWarning } from "./LocalDeckWarning";
+
 import { AddCardModal } from "@/components/cards/AddCardModal";
 import { useDeckStore } from "@/stores/deckStore";
 import { CardType } from "@/types/deck";
@@ -23,6 +25,7 @@ export function DeckView() {
     currentCard,
     setCurrentCard,
     addCard,
+    localDecks,
   } = useDeckStore();
   const [showAddCardModal, setShowAddCardModal] = useState(false);
   const [showAnswer, setShowAnswer] = useState(false);
@@ -83,12 +86,20 @@ export function DeckView() {
     }
   };
 
+  // Check if current deck is local
+  const isLocalDeck =
+    currentlySelectedDeck &&
+    localDecks.some((d) => d.id === currentlySelectedDeck.id);
+
   return (
     <div
       className="min-h-screen bg-neutral-50 p-8"
       style={{ marginLeft: "240px" }}
     >
       <div className="max-w-4xl mx-auto mt-8">
+        {/* Show local warning if deck is local */}
+        {isLocalDeck && <LocalDeckWarning />}
+
         {/* Show select deck message if no deck selected */}
         {!currentlySelectedDeck && (
           <div className="text-center py-8">
