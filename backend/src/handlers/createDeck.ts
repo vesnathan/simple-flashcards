@@ -57,7 +57,6 @@ export const handler: APIGatewayProxyHandler = async (event) => {
       createdAt: timestamp,
       lastModified: timestamp,
       isPublic: false,
-      syncStatus: "synced",
     };
 
     console.log("Creating deck:", {

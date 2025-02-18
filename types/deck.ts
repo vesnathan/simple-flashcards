@@ -5,14 +5,12 @@ export interface CardType {
 }
 
 export interface Deck {
-  id: string; // Make id required again
+  id: string;
   title: string;
   cards: CardType[];
   isPublic?: boolean;
-  isLocal?: boolean;
   userId?: string;
-  createdAt?: number; // Made optional to support local decks without createdAt
-  syncStatus?: "syncing" | "synced" | "local";
+  createdAt?: number; // Add this field
   lastModified: number;
 }
 

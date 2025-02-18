@@ -1,8 +1,9 @@
 /* eslint-disable no-console */
-import { Deck } from "../../../types/deck";
+import { CardType, Deck } from "../../../types/deck";
 
 import { authService } from "./auth";
 
+import { generateId } from "@/utils/id";
 import { env } from "@/config/env";
 
 export const deckService = {
@@ -33,19 +34,18 @@ export const deckService = {
       const publicDecks = (data || []).map((deck: Deck) => ({
         ...deck,
         isPublic: true,
-        syncStatus: deck.syncStatus || "synced",
         lastModified: deck.lastModified || Date.now(),
-        cards: deck.cards || []
+        cards: deck.cards || [],
       }));
 
       console.log("Processed public decks:", {
         count: publicDecks.length,
-        decks: publicDecks.map((d) => ({ 
-          id: d.id, 
-          title: d.title,
-          isPublic: d.isPublic,
-          cards: d.cards.length
-        }))
+        decks: publicDecks.map((deck: Deck) => ({
+          id: deck.id,
+          title: deck.title,
+          isPublic: deck.isPublic,
+          cards: deck.cards.length,
+        })),
       });
 
       return publicDecks;
@@ -74,10 +74,20 @@ export const deckService = {
     return data;
   },
 
-  async createDeck(title: string): Promise<Deck> {
+  async createDeck(title: string, cards: CardType[] = []): Promise<Deck> {
     const token = await authService.getToken();
 
     if (!token) throw new Error("No auth token available");
+
+    const timestamp = Date.now();
+    const deck = {
+      id: generateId(),
+      title,
+      cards,
+      isPublic: false,
+      lastModified: timestamp,
+      createdAt: timestamp,
+    };
 
     const response = await fetch(`${env.api.baseUrl}/create`, {
       method: "POST",
@@ -85,7 +95,7 @@ export const deckService = {
         "Content-Type": "application/json",
         Authorization: `Bearer ${token}`,
       },
-      body: JSON.stringify({ title }),
+      body: JSON.stringify(deck),
     });
 
     if (!response.ok) {
@@ -145,6 +155,7 @@ export const deckService = {
 
   async syncDeck(deck: Deck): Promise<Deck> {
     const token = await authService.getToken();
+
     if (!token) throw new Error("No auth token available");
 
     console.log("Syncing deck:", { id: deck.id, title: deck.title });

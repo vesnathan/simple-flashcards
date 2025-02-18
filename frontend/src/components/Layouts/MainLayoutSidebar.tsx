@@ -4,13 +4,16 @@
 import { cn } from "@heroui/theme";
 import { Button } from "@heroui/button";
 import { useState, useEffect } from "react";
+import { toast } from "react-toastify";
 
 import { Deck } from "@/types/deck";
 import { useDeckStore } from "@/stores/deckStore";
 import { useAuthStore } from "@/stores/authStore";
 import { AuthModal } from "@/components/auth/AuthModal";
 import { AddDeckModal } from "@/components/decks/AddDeckModal";
+import { AddCardModal } from "@/components/cards/AddCardModal";
 
+// Remove decks prop since we're using the store
 export function MainLayoutSidebar() {
   const {
     setDeck,
@@ -19,12 +22,14 @@ export function MainLayoutSidebar() {
     publicDecks,
     privateDecks,
     addDeck,
+    addCard, // Add this line to get addCard from store
   } = useDeckStore();
   const [activeCategory, setActiveCategory] = useState<"public" | "private">(
     "private",
   );
   const [showAuthModal, setShowAuthModal] = useState(false);
   const [showAddDeckModal, setShowAddDeckModal] = useState(false);
+  const [showAddCardModal, setShowAddCardModal] = useState(false);
   const { user, signOut } = useAuthStore();
 
   // Log current state whenever it changes
@@ -70,7 +75,8 @@ export function MainLayoutSidebar() {
   const handleAddDeck = async (title: string) => {
     try {
       await addDeck(title);
-      setShowAddDeckModal(false);
+      // Open add card modal immediately after deck creation
+      setShowAddCardModal(true);
     } catch (error) {
       console.error("Failed to create deck:", error);
     }
@@ -120,45 +126,25 @@ export function MainLayoutSidebar() {
       <div className={cn("flex flex-col w-full", "overflow-y-auto", "py-2")}>
         {visibleDecks.map((deck) => (
           <Button
-            key={deck.id || deck.title}
+            key={deck.id}
             className={cn(
-              "w-full rounded-none px-4 py-3 text-left justify-start",
+              "w-full rounded-none px-4 py-3 text-left justify-start items-center",
               "transition-colors duration-200",
               "hover:bg-neutral-100",
-              currentlySelectedDeck?.title === deck.title
+              currentlySelectedDeck?.id === deck.id
                 ? "bg-primary-50 text-primary-600 font-medium border-l-4 border-primary-600"
                 : "bg-transparent text-neutral-600",
             )}
             onPress={() => handleDeckSelect(deck)}
           >
-            <span className="flex items-center">
-              {deck.title}
-              {deck.isLocal && (
-                <span className="ml-2 text-xs text-neutral-500">(Local)</span>
+            <div className="flex justify-between items-center w-full">
+              <span>{deck.title}</span>
+              {localDecks.find((d) => d.id === deck.id) && (
+                <span className="ml-2 px-2 py-1 text-xs bg-yellow-100 text-yellow-800 rounded">
+                  Local
+                </span>
               )}
-              {deck.syncStatus === "syncing" && (
-                <svg
-                  className="animate-spin h-4 w-4 ml-2"
-                  fill="none"
-                  viewBox="0 0 24 24"
-                  xmlns="http://www.w3.org/2000/svg"
-                >
-                  <circle
-                    className="opacity-25"
-                    cx="12"
-                    cy="12"
-                    r="10"
-                    stroke="currentColor"
-                    strokeWidth="4"
-                  />
-                  <path
-                    className="opacity-75"
-                    d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
-                    fill="currentColor"
-                  />
-                </svg>
-              )}
-            </span>
+            </div>
           </Button>
         ))}
       </div>
@@ -195,6 +181,15 @@ export function MainLayoutSidebar() {
         isOpen={showAddDeckModal}
         onClose={() => setShowAddDeckModal(false)}
         onSubmit={handleAddDeck}
+      />
+      <AddCardModal
+        isOpen={showAddCardModal}
+        onClose={() => setShowAddCardModal(false)}
+        onSubmit={(question, answer) => {
+          addCard(question, answer);
+          // Don't close modal, just show toast
+          toast.success("Card added successfully!");
+        }}
       />
     </div>
   );

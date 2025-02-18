@@ -11,17 +11,25 @@ import { useState } from "react";
 interface AddDeckModalProps {
   isOpen: boolean;
   onClose: () => void;
-  onSubmit: (title: string) => void;
+  onSubmit: (title: string) => Promise<void>;
+  onDeckCreated?: () => void; // Add this prop
 }
 
-export function AddDeckModal({ isOpen, onClose, onSubmit }: AddDeckModalProps) {
+export function AddDeckModal({
+  isOpen,
+  onClose,
+  onSubmit,
+  onDeckCreated,
+}: AddDeckModalProps) {
   const [title, setTitle] = useState("");
 
-  const handleSubmit = () => {
+  const handleSubmit = async () => {
     if (title.trim()) {
-      onSubmit(title.trim());
+      await onSubmit(title.trim());
       setTitle("");
       onClose();
+      // Call the callback after deck is created
+      onDeckCreated?.();
     }
   };
 

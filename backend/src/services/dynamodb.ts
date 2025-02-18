@@ -64,6 +64,19 @@ export const dynamodbService = {
     });
 
     try {
+      // First check if table exists
+      try {
+        await client.send(
+          new DescribeTableCommand({ TableName: CONFIG.DECKS_TABLE }),
+        );
+        console.log(`Table ${CONFIG.DECKS_TABLE} already exists`);
+
+        return false;
+      } catch (error: any) {
+        if (error.name !== "ResourceNotFoundException") throw error;
+      }
+
+      // Table doesn't exist, create it
       await client.send(
         new CreateTableCommand({
           TableName: CONFIG.DECKS_TABLE,
@@ -85,13 +98,9 @@ export const dynamodbService = {
       console.log(`Table ${CONFIG.DECKS_TABLE} created successfully`);
       await this.waitForTable();
 
-      return true;
+      return true; // Indicate new table was created
     } catch (error: any) {
-      if (error.name === "ResourceInUseException") {
-        console.log(`Table ${CONFIG.DECKS_TABLE} already exists`);
-
-        return false;
-      }
+      console.error("Failed to create table:", error);
       throw error;
     }
   },

@@ -3,7 +3,6 @@
 import React, { PropsWithChildren, useState, useEffect } from "react";
 import { cn } from "@heroui/theme";
 
-import { Deck } from "../../../../types/deck";
 import { Toast } from "../Toast";
 
 import { MainLayoutSidebar } from "./MainLayoutSidebar";
@@ -11,10 +10,10 @@ import { MainLayoutSidebar } from "./MainLayoutSidebar";
 import { useAuthStore } from "@/stores/authStore";
 
 export interface MainLayoutProps extends PropsWithChildren {
-  decks: Deck[];
+  // No need for decks prop since we use store
 }
 
-export const MainLayout: React.FC<MainLayoutProps> = ({ children, decks }) => {
+export const MainLayout: React.FC<MainLayoutProps> = ({ children }) => {
   const [toast, setToast] = useState<{
     message: string;
     type: "success" | "error" | "info";
@@ -32,7 +31,7 @@ export const MainLayout: React.FC<MainLayoutProps> = ({ children, decks }) => {
 
   return (
     <>
-      <MainLayoutSidebar decks={decks} />
+      <MainLayoutSidebar />
       <div
         className={cn("bg-neutral-100", "w-full min-h-dvh", "flex flex-col")}
         data-testid="main-container"

@@ -11,7 +11,6 @@ if (!process.env.LAMBDA_TASK_ROOT) {
 
 const region = "ap-southeast-2";
 const profile = process.env.AWS_PROFILE || "flashcards-dev";
-const stage = process.env.STAGE || "dev";
 
 const clientConfig = {
   region,
@@ -23,9 +22,35 @@ export const apiGateway = new APIGatewayClient(clientConfig);
 export const lambda = new LambdaClient(clientConfig);
 export const cloudFront = new CloudFrontClient(clientConfig);
 
+function validateEnv() {
+  // Only validate in Lambda environment
+  if (process.env.LAMBDA_TASK_ROOT) {
+    const required = [
+      "STAGE",
+      "REGION",
+      "DECKS_TABLE",
+      "COGNITO_USER_POOL_ID",
+      "COGNITO_CLIENT_ID",
+    ];
+
+    const missing = required.filter((key) => !process.env[key]);
+
+    if (missing.length > 0) {
+      throw new Error(
+        `Missing required environment variables in Lambda: ${missing.join(", ")}\nPlease check deployment configuration.`,
+      );
+    }
+  }
+}
+
+validateEnv();
+
 export const CONFIG = {
-  DECKS_TABLE: `flashcards-${stage}-decks`,
-  STAGE: stage,
-  REGION: region,
-  ACCOUNT_ID: process.env.AWS_ACCOUNT_ID, // Make this optional
-};
+  STAGE: process.env.STAGE || "dev",
+  REGION: process.env.REGION || "ap-southeast-2",
+  AWS_ACCOUNT_ID: process.env.AWS_ACCOUNT_ID,
+  DECKS_TABLE:
+    process.env.DECKS_TABLE || `flashcards-${process.env.STAGE || "dev"}-decks`,
+  COGNITO_USER_POOL_ID: process.env.COGNITO_USER_POOL_ID,
+  COGNITO_CLIENT_ID: process.env.COGNITO_CLIENT_ID,
+} as const;

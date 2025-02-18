@@ -2,13 +2,25 @@
 import {
   CloudWatchLogsClient,
   DeleteLogGroupCommand,
+  DescribeLogGroupsCommand,
 } from "@aws-sdk/client-cloudwatch-logs";
 import {
   APIGatewayClient,
   DeleteRestApiCommand,
   GetRestApisCommand,
 } from "@aws-sdk/client-api-gateway";
-import { LambdaClient, DeleteFunctionCommand } from "@aws-sdk/client-lambda";
+import {
+  LambdaClient,
+  DeleteFunctionCommand,
+  ListFunctionsCommand,
+} from "@aws-sdk/client-lambda";
+import {
+  IAMClient,
+  DeleteRoleCommand,
+  DeleteRolePolicyCommand,
+  ListRolePoliciesCommand,
+  ListRolesCommand,
+} from "@aws-sdk/client-iam";
 
 import { CONFIG } from "../config/aws";
 
@@ -27,22 +39,40 @@ const lambda = new LambdaClient({
   profile: "flashcards-dev",
 });
 
+const iam = new IAMClient({
+  region: "ap-southeast-2",
+  profile: "flashcards-dev",
+});
+
 export const cleanupService = {
   async deleteLogGroups() {
-    const logGroups = [
-      `/aws/lambda/flashcards-${CONFIG.STAGE}-getDecks`,
-      `/aws/lambda/flashcards-${CONFIG.STAGE}-syncDeck`,
-      `/aws/apigateway/flashcards-${CONFIG.STAGE}`,
-    ];
+    try {
+      // List all log groups for this stage
+      const { logGroups } = await cloudWatchLogs.send(
+        new DescribeLogGroupsCommand({
+          logGroupNamePrefix: `/aws/flashcards-${CONFIG.STAGE}`,
+        }),
+      );
 
-    for (const logGroupName of logGroups) {
-      try {
-        await cloudWatchLogs.send(new DeleteLogGroupCommand({ logGroupName }));
-        console.log(`Deleted log group: ${logGroupName}`);
-      } catch (error: any) {
-        if (error.name !== "ResourceNotFoundException") {
-          console.error(`Failed to delete log group ${logGroupName}:`, error);
+      for (const group of logGroups || []) {
+        if (group.logGroupName) {
+          await cloudWatchLogs.send(
+            new DeleteLogGroupCommand({ logGroupName: group.logGroupName }),
+          );
+          console.log(`Deleted log group: ${group.logGroupName}`);
         }
+      }
+
+      // Also cleanup API Gateway logs
+      const apiLogGroupName = `/aws/apigateway/flashcards-${CONFIG.STAGE}`;
+
+      await cloudWatchLogs.send(
+        new DeleteLogGroupCommand({ logGroupName: apiLogGroupName }),
+      );
+      console.log(`Deleted API Gateway log group: ${apiLogGroupName}`);
+    } catch (error: any) {
+      if (error.name !== "ResourceNotFoundException") {
+        console.error("Failed to delete log groups:", error);
       }
     }
   },
@@ -64,22 +94,58 @@ export const cleanupService = {
   },
 
   async deleteLambdaFunctions() {
-    const functions = [
-      `flashcards-${CONFIG.STAGE}-getDecks`,
-      `flashcards-${CONFIG.STAGE}-syncDeck`,
-    ];
+    try {
+      const { Functions } = await lambda.send(new ListFunctionsCommand({}));
+      const stageFunctions = Functions?.filter((fn) =>
+        fn.FunctionName?.startsWith(`flashcards-${CONFIG.STAGE}-`),
+      );
 
-    for (const functionName of functions) {
-      try {
-        await lambda.send(
-          new DeleteFunctionCommand({ FunctionName: functionName }),
-        );
-        console.log(`Deleted Lambda function: ${functionName}`);
-      } catch (error: any) {
-        if (error.name !== "ResourceNotFoundException") {
-          console.error(`Failed to delete function ${functionName}:`, error);
+      for (const fn of stageFunctions || []) {
+        if (fn.FunctionName) {
+          await lambda.send(
+            new DeleteFunctionCommand({ FunctionName: fn.FunctionName }),
+          );
+          console.log(`Deleted Lambda function: ${fn.FunctionName}`);
         }
       }
+    } catch (error) {
+      console.error("Failed to delete Lambda functions:", error);
+    }
+  },
+
+  async deleteIamRoles() {
+    try {
+      const { Roles } = await iam.send(new ListRolesCommand({}));
+      const stageRoles = Roles?.filter((role) =>
+        role.RoleName?.startsWith(`flashcards-${CONFIG.STAGE}-`),
+      );
+
+      for (const role of stageRoles || []) {
+        if (role.RoleName) {
+          // First delete all inline policies
+          const { PolicyNames } = await iam.send(
+            new ListRolePoliciesCommand({ RoleName: role.RoleName }),
+          );
+
+          for (const policyName of PolicyNames || []) {
+            await iam.send(
+              new DeleteRolePolicyCommand({
+                RoleName: role.RoleName,
+                PolicyName: policyName,
+              }),
+            );
+            console.log(
+              `Deleted policy ${policyName} from role ${role.RoleName}`,
+            );
+          }
+
+          // Then delete the role
+          await iam.send(new DeleteRoleCommand({ RoleName: role.RoleName }));
+          console.log(`Deleted IAM role: ${role.RoleName}`);
+        }
+      }
+    } catch (error) {
+      console.error("Failed to delete IAM roles:", error);
     }
   },
 };

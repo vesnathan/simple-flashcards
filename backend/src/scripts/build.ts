@@ -29,22 +29,21 @@ async function build() {
   await rm(distPath, { recursive: true, force: true });
   await mkdir(distPath);
 
-  // Bundle handlers with corrected build config
+  // Bundle handlers with explicit names
   await esbuild.build({
-    entryPoints: [
-      join(__dirname, "../handlers/sync.ts"),
-      join(__dirname, "../handlers/decks.ts"),
-      join(__dirname, "../handlers/userDecks.ts"),
-      join(__dirname, "../handlers/createDeck.ts"),
-    ],
+    entryPoints: {
+      sync: join(__dirname, "../handlers/sync.ts"),
+      decks: join(__dirname, "../handlers/decks.ts"),
+      userDecks: join(__dirname, "../handlers/userDecks.ts"),
+    },
     bundle: true,
     minify: true,
     platform: "node",
     target: "node18",
     outdir: distPath,
     format: "cjs",
-    outExtension: { ".js": ".js" }, // Fixed: Use .js extension
-    external: ["aws-sdk"], // Exclude AWS SDK from bundle
+    outExtension: { ".js": ".js" },
+    external: ["aws-sdk"],
   });
 
   // Create ZIP

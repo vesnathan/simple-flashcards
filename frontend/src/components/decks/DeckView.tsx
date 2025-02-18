@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { Card, CardBody, CardFooter } from "@heroui/card";
 import { Button } from "@heroui/button";
+import { toast } from "react-toastify";
 import {
   Modal,
   ModalContent,
@@ -10,11 +11,8 @@ import {
   ModalBody,
   ModalFooter,
 } from "@heroui/modal";
-import { toast } from "react-toastify";
-import "react-toastify/dist/ReactToastify.css";
 
-import { LocalDeckWarning } from "./LocalDeckWarning";
-
+import { AddCardModal } from "@/components/cards/AddCardModal";
 import { useDeckStore } from "@/stores/deckStore";
 import { CardType } from "@/types/deck";
 
@@ -28,8 +26,6 @@ export function DeckView() {
   } = useDeckStore();
   const [showAddCardModal, setShowAddCardModal] = useState(false);
   const [showAnswer, setShowAnswer] = useState(false);
-  const [newCardQuestion, setNewCardQuestion] = useState("");
-  const [newCardAnswer, setNewCardAnswer] = useState("");
   const [showDeleteModal, setShowDeleteModal] = useState(false);
 
   const currentIndex = currentCard
@@ -66,14 +62,8 @@ export function DeckView() {
     }
   };
 
-  const handleAddCard = () => {
-    if (!newCardQuestion.trim() || !newCardAnswer.trim()) return;
-
-    addCard(newCardQuestion, newCardAnswer);
-
-    // Just clear the form fields but don't close the modal
-    setNewCardQuestion("");
-    setNewCardAnswer("");
+  const handleAddCard = (question: string, answer: string) => {
+    addCard(question, answer);
 
     // Set first card if deck was empty
     if (
@@ -99,8 +89,6 @@ export function DeckView() {
       style={{ marginLeft: "240px" }}
     >
       <div className="max-w-4xl mx-auto mt-8">
-        {currentlySelectedDeck?.isLocal && <LocalDeckWarning />}
-
         {/* Show select deck message if no deck selected */}
         {!currentlySelectedDeck && (
           <div className="text-center py-8">
@@ -179,68 +167,12 @@ export function DeckView() {
             </div>
           )}
 
-        {/* Add Card Modal */}
-        <Modal
-          className="bg-white rounded-lg shadow-xl"
+        {/* Use the existing AddCardModal component */}
+        <AddCardModal
           isOpen={showAddCardModal}
           onClose={() => setShowAddCardModal(false)}
-        >
-          <ModalContent>
-            <ModalHeader className="border-b border-neutral-200 p-4">
-              <h2 className="text-xl font-semibold">Add New Card</h2>
-            </ModalHeader>
-            <ModalBody className="p-6 space-y-4">
-              <div className="space-y-2">
-                <label
-                  className="text-sm font-medium text-neutral-700"
-                  htmlFor="question"
-                >
-                  Question
-                </label>
-                <input
-                  className="w-full p-2 border border-neutral-300 rounded-md focus:ring-2 focus:ring-primary-500 focus:border-primary-500"
-                  id="question"
-                  placeholder="Enter your question"
-                  type="text"
-                  value={newCardQuestion}
-                  onChange={(e) => setNewCardQuestion(e.target.value)}
-                />
-              </div>
-              <div className="space-y-2">
-                <label
-                  className="text-sm font-medium text-neutral-700"
-                  htmlFor="answer"
-                >
-                  Answer
-                </label>
-                <input
-                  className="w-full p-2 border border-neutral-300 rounded-md focus:ring-2 focus:ring-primary-500 focus:border-primary-500"
-                  id="answer"
-                  placeholder="Enter your answer"
-                  type="text"
-                  value={newCardAnswer}
-                  onChange={(e) => setNewCardAnswer(e.target.value)}
-                />
-              </div>
-            </ModalBody>
-            <ModalFooter className="border-t border-neutral-200 p-4">
-              <div className="flex justify-end gap-3">
-                <Button
-                  variant="bordered"
-                  onPress={() => setShowAddCardModal(false)}
-                >
-                  Cancel
-                </Button>
-                <Button
-                  className="bg-primary-600 hover:bg-primary-700 text-white"
-                  onPress={handleAddCard}
-                >
-                  Add Card
-                </Button>
-              </div>
-            </ModalFooter>
-          </ModalContent>
-        </Modal>
+          onSubmit={handleAddCard}
+        />
 
         {/* Delete Confirmation Modal */}
         <Modal

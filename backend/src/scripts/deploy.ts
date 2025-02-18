@@ -1,7 +1,6 @@
 /* eslint-disable no-console */
 import { readFileSync, writeFileSync } from "fs";
 import { join } from "path";
-import { execSync } from "child_process";
 
 import {
   LambdaClient,
@@ -9,6 +8,7 @@ import {
   UpdateFunctionCodeCommand,
   AddPermissionCommand,
   UpdateFunctionConfigurationCommand,
+  GetFunctionCommand,
 } from "@aws-sdk/client-lambda";
 import {
   APIGatewayClient,
@@ -60,12 +60,73 @@ interface ApiGatewayResource {
   restApiId: string;
 }
 
+interface DeploymentState {
+  tableName?: string;
+  authConfig?: {
+    userPoolId: string;
+    clientId: string;
+  };
+  apiId?: string;
+  stage?: string;
+}
+
+async function updateEnvFiles(state: DeploymentState) {
+  const frontendEnvPath = join(__dirname, "../../../frontend/.env");
+  const backendEnvPath = join(__dirname, "../../.env");
+
+  // Only include values that exist
+  const frontendContent = [
+    state.apiId &&
+      `NEXT_PUBLIC_API_URL=https://${state.apiId}.execute-api.${CONFIG.REGION}.amazonaws.com/${CONFIG.STAGE}/decks`,
+    state.stage && `NEXT_PUBLIC_API_STAGE=${state.stage}`,
+    state.authConfig?.userPoolId &&
+      `NEXT_PUBLIC_COGNITO_USER_POOL_ID=${state.authConfig.userPoolId}`,
+    state.authConfig?.clientId &&
+      `NEXT_PUBLIC_COGNITO_CLIENT_ID=${state.authConfig.clientId}`,
+    `NEXT_PUBLIC_COGNITO_REGION=${CONFIG.REGION}`,
+  ]
+    .filter(Boolean)
+    .join("\n");
+
+  const backendContent = [
+    state.authConfig?.clientId &&
+      `COGNITO_CLIENT_ID=${state.authConfig.clientId}`,
+    state.authConfig?.userPoolId &&
+      `COGNITO_USER_POOL_ID=${state.authConfig.userPoolId}`,
+    state.tableName && `DECKS_TABLE=${state.tableName}`,
+    `STAGE=${CONFIG.STAGE}`,
+    `REGION=${CONFIG.REGION}`,
+    `AWS_ACCOUNT_ID=${CONFIG.AWS_ACCOUNT_ID}`,
+  ]
+    .filter(Boolean)
+    .join("\n");
+
+  try {
+    writeFileSync(frontendEnvPath, frontendContent);
+    writeFileSync(backendEnvPath, backendContent);
+
+    console.log("Updated environment files with:", {
+      frontend: frontendEnvPath,
+      backend: backendEnvPath,
+      values: {
+        apiId: state.apiId,
+        stage: state.stage,
+        userPoolId: state.authConfig?.userPoolId,
+        clientId: state.authConfig?.clientId,
+      },
+    });
+  } catch (error) {
+    console.error("Failed to write environment files:", error);
+    throw error;
+  }
+}
+
 async function deployLambda(authConfig: AuthConfig) {
   console.log("Creating IAM role...");
   const roleArn = await iamService.createLambdaRole();
 
-  if (!CONFIG.ACCOUNT_ID) {
-    throw new Error("ACCOUNT_ID is required in configuration");
+  if (!CONFIG.AWS_ACCOUNT_ID) {
+    throw new Error("AWS_ACCOUNT_ID is required in configuration");
   }
 
   console.log("Created role:", roleArn);
@@ -76,14 +137,14 @@ async function deployLambda(authConfig: AuthConfig) {
   const syncFunctionName = `flashcards-${CONFIG.STAGE}-syncDeck`;
   const userDecksFunctionName = `flashcards-${CONFIG.STAGE}-userDecks`;
 
-  const environmentVariables = {
-    DECKS_TABLE: CONFIG.DECKS_TABLE,
-    STAGE: CONFIG.STAGE,
-    ACCOUNT_ID: CONFIG.ACCOUNT_ID,
-    APP_REGION: CONFIG.REGION,
-    COGNITO_USER_POOL_ID: authConfig.userPoolId,
-    COGNITO_CLIENT_ID: authConfig.clientId,
-  } as Record<string, string>;
+  const environmentVariables: Record<string, string> = {
+    DECKS_TABLE: CONFIG.DECKS_TABLE || "",
+    STAGE: CONFIG.STAGE || "dev",
+    AWS_ACCOUNT_ID: CONFIG.AWS_ACCOUNT_ID,
+    APP_REGION: CONFIG.REGION || "ap-southeast-2",
+    COGNITO_USER_POOL_ID: authConfig.userPoolId || "",
+    COGNITO_CLIENT_ID: authConfig.clientId || "",
+  };
 
   try {
     // Create/update get function with correct handler path
@@ -112,12 +173,12 @@ async function deployLambda(authConfig: AuthConfig) {
       }),
     );
 
-    // Create/update sync function with correct handler path
+    // Create/update sync function with corrected handler path
     await lambda.send(
       new CreateFunctionCommand({
         FunctionName: syncFunctionName,
         Runtime: "nodejs18.x",
-        Handler: "sync.syncDeck", // Changed from handlers/sync.syncDeck
+        Handler: "sync.syncDeck", // Change this line back to the expected handler name
         Role: roleArn,
         Code: { ZipFile: zipFile },
         Environment: {
@@ -129,9 +190,9 @@ async function deployLambda(authConfig: AuthConfig) {
     );
 
     return {
-      getFunctionArn: `arn:aws:lambda:${CONFIG.REGION}:${CONFIG.ACCOUNT_ID}:function:${getFunctionName}`,
-      userDecksFunctionArn: `arn:aws:lambda:${CONFIG.REGION}:${CONFIG.ACCOUNT_ID}:function:${userDecksFunctionName}`,
-      syncFunctionArn: `arn:aws:lambda:${CONFIG.REGION}:${CONFIG.ACCOUNT_ID}:function:${syncFunctionName}`,
+      getFunctionArn: `arn:aws:lambda:${CONFIG.REGION}:${CONFIG.AWS_ACCOUNT_ID}:function:${getFunctionName}`,
+      userDecksFunctionArn: `arn:aws:lambda:${CONFIG.REGION}:${CONFIG.AWS_ACCOUNT_ID}:function:${userDecksFunctionName}`,
+      syncFunctionArn: `arn:aws:lambda:${CONFIG.REGION}:${CONFIG.AWS_ACCOUNT_ID}:function:${syncFunctionName}`,
     };
   } catch (error: any) {
     if (error.name === "ResourceConflictException") {
@@ -145,9 +206,9 @@ async function deployLambda(authConfig: AuthConfig) {
       console.log("Lambda function updated successfully");
 
       return {
-        getFunctionArn: `arn:aws:lambda:${CONFIG.REGION}:${CONFIG.ACCOUNT_ID}:function:${getFunctionName}`,
-        userDecksFunctionArn: `arn:aws:lambda:${CONFIG.REGION}:${CONFIG.ACCOUNT_ID}:function:${userDecksFunctionName}`,
-        syncFunctionArn: `arn:aws:lambda:${CONFIG.REGION}:${CONFIG.ACCOUNT_ID}:function:${syncFunctionName}`,
+        getFunctionArn: `arn:aws:lambda:${CONFIG.REGION}:${CONFIG.AWS_ACCOUNT_ID}:function:${getFunctionName}`,
+        userDecksFunctionArn: `arn:aws:lambda:${CONFIG.REGION}:${CONFIG.AWS_ACCOUNT_ID}:function:${userDecksFunctionName}`,
+        syncFunctionArn: `arn:aws:lambda:${CONFIG.REGION}:${CONFIG.AWS_ACCOUNT_ID}:function:${syncFunctionName}`,
       };
     } else {
       throw error;
@@ -345,6 +406,24 @@ async function deployAPI(
     // Now add methods to each resource
     console.log("Adding methods to resources...");
 
+    // Add /sync endpoint
+    const syncResource = await apiGateway.send(
+      new CreateResourceCommand({
+        restApiId: api.id,
+        parentId: apiResources.decks.id,
+        pathPart: "sync",
+      }),
+    );
+
+    // Add methods to /decks/sync
+    if (syncResource.id) {
+      await addResourceMethods(api.id, syncResource.id, syncFunctionArn, [
+        "POST",
+        "OPTIONS",
+      ]);
+      log.verbose("Added sync endpoint");
+    }
+
     // Add methods to /decks
     await addResourceMethods(api.id, apiResources.decks.id, functionArn, [
       "GET",
@@ -507,8 +586,9 @@ async function addOptionsMethod(apiId: string, resourceId: string) {
       httpMethod: "OPTIONS",
       type: "MOCK",
       requestTemplates: {
-        "application/json": '{ "statusCode": 200 }',
+        "application/json": '{"statusCode": 200}',
       },
+      passthroughBehavior: "WHEN_NO_MATCH",
     }),
   );
 
@@ -519,9 +599,10 @@ async function addOptionsMethod(apiId: string, resourceId: string) {
       httpMethod: "OPTIONS",
       statusCode: "200",
       responseParameters: {
-        "method.response.header.Access-Control-Allow-Origin": true,
-        "method.response.header.Access-Control-Allow-Methods": true,
         "method.response.header.Access-Control-Allow-Headers": true,
+        "method.response.header.Access-Control-Allow-Methods": true,
+        "method.response.header.Access-Control-Allow-Origin": true,
+        "method.response.header.Access-Control-Allow-Credentials": true,
       },
     }),
   );
@@ -533,11 +614,12 @@ async function addOptionsMethod(apiId: string, resourceId: string) {
       httpMethod: "OPTIONS",
       statusCode: "200",
       responseParameters: {
-        "method.response.header.Access-Control-Allow-Origin": "'*'",
-        "method.response.header.Access-Control-Allow-Methods":
-          "'GET,POST,OPTIONS'",
         "method.response.header.Access-Control-Allow-Headers":
-          "'Content-Type,X-Amz-Date,Authorization,X-Api-Key,X-Amz-Security-Token'",
+          "'Content-Type,X-Amz-Date,Authorization,X-Api-Key,X-Amz-Security-Token,X-Requested-With'",
+        "method.response.header.Access-Control-Allow-Methods":
+          "'GET,POST,PUT,DELETE,OPTIONS,HEAD,PATCH'",
+        "method.response.header.Access-Control-Allow-Origin": "'*'",
+        "method.response.header.Access-Control-Allow-Credentials": "'true'",
       },
     }),
   );
@@ -567,6 +649,23 @@ async function addProxyMethod(
       type: "AWS_PROXY",
       integrationHttpMethod: "POST",
       uri: `arn:aws:apigateway:${CONFIG.REGION}:lambda:path/2015-03-31/functions/${functionArn}/invocations`,
+      passthroughBehavior: "WHEN_NO_MATCH",
+    }),
+  );
+
+  // Add comprehensive CORS headers
+  await apiGateway.send(
+    new PutMethodResponseCommand({
+      restApiId: apiId,
+      resourceId: resourceId,
+      httpMethod: method,
+      statusCode: "200",
+      responseParameters: {
+        "method.response.header.Access-Control-Allow-Origin": true,
+        "method.response.header.Access-Control-Allow-Headers": true,
+        "method.response.header.Access-Control-Allow-Methods": true,
+        "method.response.header.Access-Control-Allow-Credentials": true,
+      },
     }),
   );
 }
@@ -646,7 +745,7 @@ async function enableApiGatewayLogging(apiId: string) {
           {
             op: "replace",
             path: "/accessLogSettings/destinationArn",
-            value: `arn:aws:logs:${CONFIG.REGION}:${CONFIG.ACCOUNT_ID}:log-group:${logGroupName}`,
+            value: `arn:aws:logs:${CONFIG.REGION}:${CONFIG.AWS_ACCOUNT_ID}:log-group:${logGroupName}`,
           },
           {
             op: "replace",
@@ -684,7 +783,7 @@ async function addLambdaPermission(functionName: string) {
         StatementId: `apigateway-invoke-${Date.now()}`, // Make StatementId unique
         Action: "lambda:InvokeFunction",
         Principal: "apigateway.amazonaws.com",
-        SourceArn: `arn:aws:execute-api:${CONFIG.REGION}:${CONFIG.ACCOUNT_ID}:*/*/*/*`,
+        SourceArn: `arn:aws:execute-api:${CONFIG.REGION}:${CONFIG.AWS_ACCOUNT_ID}:*/*/*/*`,
       }),
     );
     console.log(`Lambda permission added successfully for ${functionName}`);
@@ -698,28 +797,38 @@ async function addLambdaPermission(functionName: string) {
   }
 }
 
-async function writeEnvFile(apiId: string, authConfig: AuthConfig) {
-  if (!authConfig.userPoolId || !authConfig.clientId) {
-    throw new Error("Invalid auth configuration");
+async function waitForFunction(functionName: string): Promise<void> {
+  let retries = 0;
+  const maxRetries = 30; // Increased from 10 to 30
+  const delay = 5000; // Increased from 3s to 5s
+
+  while (retries < maxRetries) {
+    try {
+      // Try to get function configuration instead of updating
+      await lambda.send(
+        new GetFunctionCommand({
+          FunctionName: functionName,
+        }),
+      );
+
+      // If successful and no error, function is ready
+      return;
+    } catch (error: any) {
+      if (error.name === "ResourceConflictException") {
+        log.verbose(
+          `Function ${functionName} still updating, waiting... (${retries + 1}/${maxRetries})`,
+        );
+        await new Promise((resolve) => setTimeout(resolve, delay));
+        retries++;
+      } else if (error.name === "ResourceNotFoundException") {
+        // Function doesn't exist yet, no need to wait
+        return;
+      } else {
+        throw error;
+      }
+    }
   }
-
-  const envContent = `
-NEXT_PUBLIC_API_URL=https://${apiId}.execute-api.${CONFIG.REGION}.amazonaws.com/${CONFIG.STAGE}/decks
-NEXT_PUBLIC_API_STAGE=${CONFIG.STAGE}
-NEXT_PUBLIC_COGNITO_USER_POOL_ID=${authConfig.userPoolId}
-NEXT_PUBLIC_COGNITO_CLIENT_ID=${authConfig.clientId}
-NEXT_PUBLIC_COGNITO_REGION=${CONFIG.REGION}
-`.trim();
-
-  const envPath = join(__dirname, "../../../frontend/.env");
-
-  writeFileSync(envPath, envContent);
-
-  console.log("Frontend configuration saved to .env file");
-  console.log(
-    "API URL:",
-    `https://${apiId}.execute-api.${CONFIG.REGION}.amazonaws.com/${CONFIG.STAGE}/decks`,
-  );
+  throw new Error(`Timed out waiting for function ${functionName} to be ready`);
 }
 
 async function updateExistingFunctions(
@@ -730,150 +839,195 @@ async function updateExistingFunctions(
   const syncFunctionName = `flashcards-${CONFIG.STAGE}-syncDeck`;
   const userDecksFunctionName = `flashcards-${CONFIG.STAGE}-userDecks`;
 
-  const environmentVariables = {
-    DECKS_TABLE: CONFIG.DECKS_TABLE,
-    STAGE: CONFIG.STAGE,
-    ACCOUNT_ID: CONFIG.ACCOUNT_ID,
-    APP_REGION: CONFIG.REGION,
+  if (!CONFIG.AWS_ACCOUNT_ID) {
+    throw new Error("AWS_ACCOUNT_ID is required for function deployment");
+  }
+
+  // Ensure all environment variables are strings
+  const environmentVariables: Record<string, string> = {
+    DECKS_TABLE: CONFIG.DECKS_TABLE || "",
+    STAGE: CONFIG.STAGE || "dev",
+    AWS_ACCOUNT_ID: CONFIG.AWS_ACCOUNT_ID,
+    APP_REGION: CONFIG.REGION || "ap-southeast-2",
     COGNITO_USER_POOL_ID: authConfig.userPoolId || "",
     COGNITO_CLIENT_ID: authConfig.clientId || "",
-  } as Record<string, string>;
+  };
 
-  // Update all functions
-  for (const functionName of [
-    getFunctionName,
-    syncFunctionName,
-    userDecksFunctionName,
-  ]) {
-    console.log(`Updating function: ${functionName}`);
+  const handlers = {
+    [getFunctionName]: "decks.handler",
+    [syncFunctionName]: "sync.syncDeck", // Change this line to match
+    [userDecksFunctionName]: "userDecks.handler",
+  };
 
+  // Update functions sequentially with better error handling
+  for (const functionName of Object.keys(handlers)) {
     try {
-      await lambda.send(
-        new UpdateFunctionCodeCommand({
-          FunctionName: functionName,
-          ZipFile: zipFile,
-        }),
-      );
+      log.verbose(`Updating function: ${functionName}`);
 
-      // Also update environment variables
-      await lambda.send(
-        new UpdateFunctionConfigurationCommand({
-          FunctionName: functionName,
-          Environment: {
-            Variables: environmentVariables,
-          },
-        }),
-      );
+      // Wait for any pending updates first
+      await waitForFunction(functionName);
 
-      console.log(`Successfully updated ${functionName}`);
-    } catch (error: any) {
-      if (error.name === "ResourceConflictException") {
-        console.log(`Skipping ${functionName} - update already in progress`);
-        continue;
-      }
-      if (error.name === "ResourceNotFoundException") {
-        console.log(`Creating new function: ${functionName}`);
+      try {
+        // Try to update code first
         await lambda.send(
-          new CreateFunctionCommand({
+          new UpdateFunctionCodeCommand({
             FunctionName: functionName,
-            Runtime: "nodejs18.x",
-            Handler: functionName.includes("userDecks")
-              ? "userDecks.handler"
-              : functionName.includes("sync")
-                ? "sync.syncDeck"
-                : "decks.handler",
-            Role: await iamService.createLambdaRole(),
-            Code: { ZipFile: zipFile },
+            ZipFile: zipFile,
+          }),
+        );
+
+        // Wait after code update
+        await new Promise((resolve) => setTimeout(resolve, 5000));
+        await waitForFunction(functionName);
+
+        // Then update configuration
+        await lambda.send(
+          new UpdateFunctionConfigurationCommand({
+            FunctionName: functionName,
+            Handler: handlers[functionName],
             Environment: { Variables: environmentVariables },
           }),
         );
-        continue;
+
+        // Wait for configuration update
+        await new Promise((resolve) => setTimeout(resolve, 5000));
+        await waitForFunction(functionName);
+
+        log.verbose(`Successfully updated ${functionName}`);
+      } catch (updateError: any) {
+        if (updateError.name === "ResourceNotFoundException") {
+          // Function doesn't exist, create it
+          log.verbose(`Creating new function: ${functionName}`);
+          await lambda.send(
+            new CreateFunctionCommand({
+              FunctionName: functionName,
+              Runtime: "nodejs18.x",
+              Handler: handlers[functionName],
+              Role: await iamService.createLambdaRole(),
+              Code: { ZipFile: zipFile },
+              Environment: { Variables: environmentVariables },
+            }),
+          );
+          await new Promise((resolve) => setTimeout(resolve, 5000));
+        } else {
+          throw updateError;
+        }
       }
-      console.error(`Failed to update ${functionName}:`, error);
+    } catch (error: any) {
+      log.error(`Failed to update ${functionName}:`, error);
       throw error;
     }
   }
 }
 
+// Enhanced logging utility with minimal output by default
+const isVerbose = process.argv.includes("--verbose");
+
+// Completely silence AWS SDK and debug logs unless verbose
+if (!isVerbose) {
+  console.debug = () => {};
+  console.info = () => {};
+  console.log = (message: string) => {
+    // Only allow messages that start with our status indicators
+    if (
+      typeof message === "string" &&
+      (message.startsWith("✓") ||
+        message.startsWith("✗") ||
+        message.startsWith("✨") ||
+        message.startsWith("["))
+    ) {
+      process.stdout.write(message + "\n");
+    }
+  };
+}
+
+const log = {
+  info: (message: string) => console.log(`✓ ${message}`),
+  step: (message: string) =>
+    console.log(`\n[${new Date().toLocaleTimeString()}] ${message}`),
+  verbose: (message: string, data?: any) => {
+    if (isVerbose) {
+      if (data) console.log(`[verbose] ${message}:`, data);
+      else console.log(`[verbose] ${message}`);
+    }
+  },
+  error: (message: string, error?: any) => {
+    console.error(`✗ ${message}`);
+    if (isVerbose && error) console.error(error);
+  },
+  success: (message: string) => console.log(`\n✨ ${message}\n`),
+  status: (message: string) => {
+    process.stdout.write(`${message}...`);
+  },
+  done: () => {
+    process.stdout.write(" done\n");
+  },
+};
+
 async function deploy() {
   try {
-    console.log("Building Lambda functions...");
-    execSync("yarn build", { stdio: "inherit" });
+    const state: DeploymentState = {
+      stage: CONFIG.STAGE,
+      tableName: `flashcards-${CONFIG.STAGE}-decks`,
+    };
 
-    console.log("Creating DynamoDB table...");
-    const tableWasCreated = await dynamodbService.createTable();
+    log.status("Setting up infrastructure");
+    const isNewTable = await dynamodbService.createTable();
 
-    // Set up authentication and validate config
-    console.log("Setting up authentication...");
-    const authConfig = await cognitoService.setupAuth();
-
-    if (!authConfig.userPoolId || !authConfig.clientId) {
-      throw new Error("Failed to setup authentication");
+    if (isNewTable) {
+      await dynamodbService.seedTable();
     }
+    state.authConfig = await cognitoService.setupAuth();
+    log.done();
 
-    // Deploy Lambda and get ARNs
+    log.status("Deploying functions");
     const { getFunctionArn, userDecksFunctionArn, syncFunctionArn } =
-      await deployLambda(authConfig);
+      await deployLambda(state.authConfig);
+    const zipFile = readFileSync(join(__dirname, "../../dist/functions.zip"));
 
-    // Deploy API Gateway with function integrations
-    const apiId = await deployAPI(
+    await updateExistingFunctions(zipFile, state.authConfig);
+    log.done();
+
+    log.status("Configuring API Gateway");
+    state.apiId = await deployAPI(
       getFunctionArn,
       userDecksFunctionArn,
       syncFunctionArn,
     );
+    await updateEnvFiles(state);
+    log.done();
 
-    if (!apiId) throw new Error("Failed to get API ID");
+    log.status("Setting up permissions");
+    const functionNames = [
+      `flashcards-${CONFIG.STAGE}-getDecks`,
+      `flashcards-${CONFIG.STAGE}-syncDeck`,
+      `flashcards-${CONFIG.STAGE}-userDecks`,
+    ];
 
-    // Write frontend config
-    await writeEnvFile(apiId, authConfig);
-
-    // Update Lambda functions with latest code and config
-    const zipFile = readFileSync(join(__dirname, "../../dist/functions.zip"));
-
-    await updateExistingFunctions(zipFile, authConfig);
-
-    // Function names
-    const getFunctionName = `flashcards-${CONFIG.STAGE}-getDecks`;
-    const syncFunctionName = `flashcards-${CONFIG.STAGE}-syncDeck`;
-    const userDecksFunctionName = `flashcards-${CONFIG.STAGE}-userDecks`;
-
-    // Add Lambda permissions after functions are created/updated
-    console.log("Adding Lambda permissions...");
-    for (const functionName of [
-      getFunctionName,
-      syncFunctionName,
-      userDecksFunctionName,
-    ]) {
-      try {
-        await addLambdaPermission(functionName);
-      } catch (error: any) {
-        console.error(
-          `Failed to add permission for ${functionName}:`,
-          error.message,
-        );
-        // Continue with other functions even if one fails
-      }
+    for (const functionName of functionNames) {
+      await addLambdaPermission(functionName);
     }
+    log.done();
 
-    console.log("Deployment successful");
-    console.log(
-      "API URL:",
-      `https://${apiId}.execute-api.${CONFIG.REGION}.amazonaws.com/${CONFIG.STAGE}/decks`,
-    );
-    console.log("User Pool ID:", authConfig.userPoolId);
-    console.log("Client ID:", authConfig.clientId);
+    const apiUrl = `https://${state.apiId}.execute-api.${CONFIG.REGION}.amazonaws.com/${CONFIG.STAGE}/decks`;
 
-    if (tableWasCreated) {
-      console.log("New table created, running seed...");
-      await dynamodbService.seedTable();
-      console.log("Database seeded successfully");
-    }
-
-    console.log("Deployment completed successfully");
+    log.success(`Deployment completed successfully!\nAPI URL: ${apiUrl}`);
   } catch (error) {
-    console.error("Deployment failed:", error);
+    log.error("Deployment failed", error);
     process.exit(1);
   }
+}
+
+// Help message
+if (process.argv.includes("--help")) {
+  console.log(`
+Usage: yarn deploy [options]
+
+Options:
+  --verbose    Show detailed deployment logs
+  --help       Show this help message
+  `);
+  process.exit(0);
 }
 
 deploy();

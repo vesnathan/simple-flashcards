@@ -3,33 +3,50 @@ import { dynamodbService } from "../services/dynamodb";
 import { cognitoService } from "../services/cognito";
 import { cleanupService } from "../services/cleanup";
 
+// Add logging utility
+const log = {
+  status: (message: string) => {
+    process.stdout.write(`${message}...`);
+  },
+  done: () => {
+    process.stdout.write(" done\n");
+  },
+  error: (message: string, error?: any) => {
+    console.error(`✗ ${message}`);
+    if (error) console.error(error);
+  },
+  success: (message: string) => console.log(`\n✨ ${message}\n`),
+};
+
 async function cleanup() {
   try {
-    console.log("Starting cleanup...");
-
-    // Delete CloudWatch log groups
-    console.log("Deleting CloudWatch logs...");
+    log.status("Cleaning up CloudWatch logs");
     await cleanupService.deleteLogGroups();
+    log.done();
 
-    // Delete API Gateway
-    console.log("Deleting API Gateway...");
+    log.status("Removing API Gateway");
     await cleanupService.deleteApiGateway();
+    log.done();
 
-    // Delete Lambda functions
-    console.log("Deleting Lambda functions...");
+    log.status("Removing Lambda functions");
     await cleanupService.deleteLambdaFunctions();
+    log.done();
 
-    // Delete DynamoDB table
-    console.log("Deleting DynamoDB table...");
+    log.status("Removing IAM roles and policies");
+    await cleanupService.deleteIamRoles();
+    log.done();
+
+    log.status("Removing DynamoDB table");
     await dynamodbService.deleteTable();
+    log.done();
 
-    // Delete Cognito resources
-    console.log("Deleting Cognito resources...");
+    log.status("Removing Cognito resources");
     await cognitoService.cleanup();
+    log.done();
 
-    console.log("Cleanup completed successfully");
+    log.success("Cleanup completed successfully");
   } catch (error) {
-    console.error("Cleanup failed:", error);
+    log.error("Cleanup failed:", error);
     process.exit(1);
   }
 }

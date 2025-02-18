@@ -11,6 +11,7 @@ interface AuthState {
   user: any | null;
   loading: boolean;
   error: string | null;
+  isLoggedIn: boolean; // Add this
   signIn: (email: string, password: string) => Promise<void>;
   signUp: (email: string, password: string) => Promise<void>;
   signOut: () => Promise<void>;
@@ -25,6 +26,7 @@ export const useAuthStore = create<AuthState>((set) => ({
   user: null,
   loading: true,
   error: null,
+  isLoggedIn: false, // Add this
   pendingConfirmation: null,
   toastMessage: null,
 
@@ -32,7 +34,7 @@ export const useAuthStore = create<AuthState>((set) => ({
     try {
       const user = await getCurrentUser();
 
-      set({ user, loading: false });
+      set({ user, loading: false, isLoggedIn: true });
     } catch {
       // Clear tokens if not authenticated
       await Cache.clear(); // Fix: Use Cache instead of cache
@@ -41,7 +43,7 @@ export const useAuthStore = create<AuthState>((set) => ({
       localStorage.removeItem("idToken");
       localStorage.removeItem("refreshToken");
 
-      set({ user: null, loading: false });
+      set({ user: null, loading: false, isLoggedIn: false });
     }
   },
 
@@ -55,7 +57,7 @@ export const useAuthStore = create<AuthState>((set) => ({
       const userId = currentUser.userId || currentUser.username;
       const user = { ...currentUser, userId };
 
-      set({ user, error: null });
+      set({ user, error: null, isLoggedIn: true });
 
       // Load decks immediately after successful sign in
       const deckStore = useDeckStore.getState();
@@ -74,7 +76,7 @@ export const useAuthStore = create<AuthState>((set) => ({
       }));
     } catch (error: any) {
       console.error("Sign in error:", error);
-      set({ error: error.message, user: null });
+      set({ error: error.message, user: null, isLoggedIn: false });
       throw error;
     }
   },
@@ -103,7 +105,7 @@ export const useAuthStore = create<AuthState>((set) => ({
 
       // Clear user decks when signing out
       useDeckStore.getState().clearUserDecks();
-      set({ user: null, error: null });
+      set({ user: null, error: null, isLoggedIn: false });
     } catch (error: any) {
       console.error("Sign out error:", error);
       set({ error: error.message });

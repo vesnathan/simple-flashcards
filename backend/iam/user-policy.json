@@ -6,6 +6,8 @@
       "Action": [
         "iam:CreateRole",
         "iam:GetRole",
+        "iam:ListRoles",
+        "iam:ListRolePolicies",
         "iam:PutRolePolicy",
         "iam:DeleteRole",
         "iam:DeleteRolePolicy",

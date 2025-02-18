@@ -7,30 +7,24 @@ import { Deck } from "@/types/deck";
 export const syncService = {
   async saveDeckToDb(deck: Deck): Promise<Deck> {
     try {
-      // Validate deck data before sending
-      if (!deck.cards || !Array.isArray(deck.cards)) {
-        console.error("Invalid deck data:", deck);
-        throw new Error("Invalid deck data: cards array is missing or invalid");
-      }
-
-      // Create a clean deck object
+      const timestamp = Date.now();
+      // Ensure all required fields are present
       const deckToSync = {
         id: deck.id,
         title: deck.title,
-        cards: deck.cards.map((card) => ({
-          id: card.id,
-          question: card.question,
-          answer: card.answer,
-        })),
+        cards: deck.cards,
         isPublic: deck.isPublic || false,
-        lastModified: Date.now(),
+        lastModified: timestamp,
+        createdAt: deck.createdAt || timestamp,
       };
 
-      console.log("Sending deck to sync:", {
+      console.log("Syncing deck to DB:", {
         id: deckToSync.id,
         title: deckToSync.title,
-        cards: deckToSync.cards,
         cardCount: deckToSync.cards.length,
+        createdAt: deckToSync.createdAt,
+        lastModified: deckToSync.lastModified,
+        isPublic: deckToSync.isPublic,
       });
 
       const token = await authService.getToken();
@@ -39,21 +33,14 @@ export const syncService = {
         throw new Error("No auth token available");
       }
 
-      const apiUrl = `${process.env.NEXT_PUBLIC_API_URL}/sync`; // Update URL to use sync endpoint
-
-      console.log("Syncing deck:", {
-        id: deck.id,
-        title: deck.title,
-        cardCount: deck.cards.length,
-      });
-
+      const apiUrl = `${process.env.NEXT_PUBLIC_API_URL}/sync`;
       const response = await fetch(apiUrl, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
           Authorization: `Bearer ${token}`,
         },
-        body: JSON.stringify(deck),
+        body: JSON.stringify(deckToSync), // Send cleaned deck object
       });
 
       if (!response.ok) {
@@ -87,16 +74,21 @@ export const syncService = {
   async syncLocalDecks(): Promise<void> {
     const localDecks = localStorageService.getDecks();
 
-    console.log("Starting sync of local decks:", localDecks.length);
+    console.log("Starting sync of local decks:", {
+      count: localDecks.length,
+      decks: localDecks.map((d) => ({
+        id: d.id,
+        title: d.title,
+        cards: d.cards.length,
+      })),
+    });
 
     const syncPromises = localDecks.map(async (deck) => {
       try {
-        const syncedDeck = await this.saveDeckToDb(deck);
-
+        await this.saveDeckToDb(deck);
+        // After successful sync, remove from local storage
         localStorageService.deleteDeck(deck.id);
-        console.log("Successfully synced and removed deck:", deck.id);
-
-        return syncedDeck;
+        console.log(`Synced and removed local deck: ${deck.id}`);
       } catch (error) {
         console.error(`Failed to sync deck ${deck.id}:`, error);
         throw error;

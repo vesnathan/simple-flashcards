@@ -14,8 +14,18 @@ import {
 } from "@aws-sdk/client-cognito-identity-provider";
 
 import { CONFIG } from "../config/aws";
+import { getCredentialConfig } from "../config/credentials";
 
-const cognito = new CognitoIdentityProviderClient({ region: CONFIG.REGION });
+// Create Cognito client with debug logging disabled
+const cognito = new CognitoIdentityProviderClient({
+  ...getCredentialConfig(),
+  logger: {
+    debug: () => {},
+    info: () => {},
+    warn: console.warn,
+    error: console.error,
+  },
+});
 
 interface CognitoConfig {
   userPoolId: string;

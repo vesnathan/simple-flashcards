@@ -27,7 +27,7 @@
   },
   "scripts": {
     "build": "yarn clean && ts-node src/scripts/build.ts",
-    "deploy": "ts-node src/scripts/deploy.ts",
+    "deploy": "yarn build && ts-node src/scripts/deploy.ts",
     "deploy:dev": "yarn deploy --stage=dev",
     "deploy:prod": "yarn deploy --stage=prod",
     "start": "ts-node src/local.ts",

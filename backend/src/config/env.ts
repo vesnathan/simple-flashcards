@@ -16,7 +16,7 @@ export const loadEnv = () => {
   // This function is called at the start of any script that needs env vars
   if (!process.env.AWS_ACCOUNT_ID) {
     throw new Error(
-      "Required environment variables are missing. Please check your .env file.",
+      "Required environment variable AWS_ACCOUNT_ID is missing. Please check your .env file.",
     );
   }
 };

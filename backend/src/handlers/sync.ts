@@ -19,8 +19,8 @@ const corsHeaders = {
   "Access-Control-Allow-Headers": "Content-Type,Authorization",
 };
 
-// Export handler directly instead of named export
-export const handler = async (
+// Export with the name Lambda expects
+export const syncDeck = async (
   event: APIGatewayProxyEvent,
 ): Promise<APIGatewayProxyResult> => {
   // Handle preflight requests
@@ -55,15 +55,32 @@ export const handler = async (
       };
     }
 
-    const deck = JSON.parse(event.body);
+    const deck = JSON.parse(event.body || "{}");
 
-    // Add user info and timestamps
+    if (!deck.title || !deck.id) {
+      return {
+        statusCode: 400,
+        headers: corsHeaders,
+        body: JSON.stringify({ message: "Deck title and ID are required" }),
+      };
+    }
+
+    // Use the existing local ID from the deck
+    const timestamp = Date.now();
     const updatedDeck = {
       ...deck,
       userId,
-      lastModified: Date.now(),
-      syncStatus: "synced",
+      createdAt: deck.createdAt || timestamp,
+      lastModified: timestamp,
     };
+
+    // Log the deck being saved
+    console.log("Saving deck:", {
+      id: updatedDeck.id,
+      userId: updatedDeck.userId,
+      title: updatedDeck.title,
+      cardCount: updatedDeck.cards?.length || 0,
+    });
 
     // Save to DynamoDB
     await ddb.put({
@@ -89,3 +106,6 @@ export const handler = async (
     };
   }
 };
+
+// Also export as default for consistency
+export default syncDeck;
